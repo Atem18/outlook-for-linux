@@ -1,0 +1,16 @@
+node_modules/
+dist/
+out/
+build/
+*.log
+.DS_Store
+.vscode/
+.idea/
+assets/icon.png
+*.AppImage
+*.deb
+*.rpm
+flatpak/.flatpak-builder/
+flatpak/repo/
+flatpak/build-dir/
+*.flatpak

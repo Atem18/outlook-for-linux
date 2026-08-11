@@ -1,0 +1,15 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Outlook for Linux
+GenericName=Email Client
+Comment=Microsoft Outlook Web Client
+Exec=outlook-for-linux %U
+Icon=outlook-for-linux
+Terminal=false
+# StartupWMClass MUST match app.getName() for app.setBadgeCount() to work on KDE
+StartupWMClass=outlook-for-linux
+StartupNotify=true
+Categories=Network;Email;
+MimeType=x-scheme-handler/mailto;
+Keywords=mail;email;outlook;microsoft;

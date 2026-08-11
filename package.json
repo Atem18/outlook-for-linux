@@ -1,0 +1,54 @@
+{
+  "name": "outlook-for-linux",
+  "version": "1.0.0",
+  "description": "Outlook Web client packaged as a native desktop app for Linux",
+  "author": "Kevin Messer <messer.kevin@gmail.com>",
+  "license": "GPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kevinmesser/outlook-for-linux"
+  },
+  "homepage": "https://github.com/kevinmesser/outlook-for-linux#readme",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "start:wayland": "ELECTRON_OZONE_PLATFORM_HINT=wayland electron .",
+    "build": "electron-builder --linux",
+    "build:appimage": "electron-builder --linux AppImage",
+    "build:deb": "electron-builder --linux deb",
+    "build:rpm": "electron-builder --linux rpm"
+  },
+  "devDependencies": {
+    "electron": "^41.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "io.github.kevinmesser.outlook-for-linux",
+    "productName": "Outlook",
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm"
+      ],
+      "icon": "assets/icon.png",
+      "category": "Network",
+      "desktop": {
+        "entry": {
+          "Name": "Outlook for Linux",
+          "Comment": "Microsoft Outlook Web Client",
+          "StartupWMClass": "outlook-for-linux"
+        }
+      }
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "icon-generator.js",
+      "assets/**"
+    ]
+  },
+  "allowScripts": {
+    "electron@41.3.0": true
+  }
+}
