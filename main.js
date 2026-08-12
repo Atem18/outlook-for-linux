@@ -151,6 +151,13 @@ function createWindow() {
     icon:            ICON_PATH,
     autoHideMenuBar: true,
     backgroundColor: '#0078d4',
+    frame:           false,
+    titleBarStyle:   'hidden',
+    titleBarOverlay: {
+      color:       '#efefef',
+      symbolColor: '#323130',
+      height:      48,
+    },
     webPreferences: {
       preload:          path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -224,6 +231,20 @@ function createWindow() {
     const url = mainWindow.webContents.getURL();
     if (isOutlookPage(url)) {
       startPolling();
+      // Electron's titleBarOverlay draws the min/max/close buttons but doesn't
+      // report `display-mode: window-controls-overlay`, so Outlook's own WCO-aware
+      // CSS never activates and the window has no drag region. #OwaTitleBar is
+      // Outlook's own (stable, purpose-built) title bar row — make it draggable
+      // directly, excluding anything interactive inside it.
+      mainWindow.webContents.insertCSS(`
+        #OwaTitleBar { -webkit-app-region: drag; }
+        #OwaTitleBar button,
+        #OwaTitleBar a,
+        #OwaTitleBar input,
+        #OwaTitleBar [role="button"],
+        #OwaTitleBar [role="menuitem"],
+        #OwaTitleBar [tabindex] { -webkit-app-region: no-drag; }
+      `).catch((e) => console.warn('[titlebar] insertCSS failed', e.message));
     } else {
       // Still on login flow — just check the title in case it carries a count
       pollDOM();
