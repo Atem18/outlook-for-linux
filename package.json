@@ -49,6 +49,6 @@
     ]
   },
   "allowScripts": {
-    "electron@41.3.0": true
+    "electron@41.10.5": true
   }
 }
