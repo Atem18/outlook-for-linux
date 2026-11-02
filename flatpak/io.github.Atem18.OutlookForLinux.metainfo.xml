@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.Atem18.OutlookForLinux</id>
+  <name>Outlook for Linux</name>
+  <summary>Unofficial client for Microsoft Outlook</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="io.github.Atem18">
+    <name>Atem18</name>
+  </developer>
+  <description>
+    <p>
+      Outlook for Linux wraps the Outlook web app in a desktop window with
+      native integration: it works with work and school (Microsoft 365) and
+      personal (outlook.com) accounts.
+    </p>
+    <p>
+      This is an unofficial project and is not affiliated with or endorsed by
+      Microsoft.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.Atem18.OutlookForLinux.desktop</launchable>
+  <categories>
+    <category>Office</category>
+    <category>Email</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-11-02"/>
+  </releases>
+</component>

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Outlook for Linux
+Comment=Unofficial client for Microsoft Outlook
+Exec=outlook-for-linux %U
+Icon=io.github.Atem18.OutlookForLinux
+Terminal=false
+Type=Application
+Categories=Office;Email;Calendar;Network;
+StartupWMClass=outlook-for-linux
+StartupNotify=true

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+test-results/
+playwright-report/
+.flatpak-builder/
+flatpak-build/
+flatpak-repo/
+parts/
+snap/.snapcraft/
+*.log
+app/browser/preload.bundle.js

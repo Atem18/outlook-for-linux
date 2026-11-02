@@ -1,0 +1,112 @@
+{
+  "name": "outlook-for-linux",
+  "version": "0.1.0",
+  "main": "app/index.js",
+  "description": "Unofficial client for Microsoft Outlook for Linux",
+  "keywords": [
+    "Outlook",
+    "Microsoft Outlook",
+    "Mail",
+    "Calendar"
+  ],
+  "author": {
+    "name": "Kevin Messer",
+    "email": "messer.kevin@gmail.com"
+  },
+  "license": "GPL-3.0-or-later",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "postinstall": "electron-builder install-app-deps",
+    "build:preload": "node scripts/buildPreload.js",
+    "lint": "eslint .",
+    "test:unit": "node --test 'tests/unit/*.test.js'",
+    "test:e2e": "playwright test",
+    "start": "electron . --trace-warnings",
+    "start:dev": "electron . --trace-warnings --no-sandbox",
+    "pack": "npm run build:preload && electron-builder --dir",
+    "dist:linux": "npm run build:preload && electron-builder --linux",
+    "dist:linux:deb": "npm run build:preload && electron-builder --x64 --arm64 -l deb",
+    "dist:linux:snap": "npm run build:preload && electron-builder -l snap",
+    "dist:linux:dir": "npm run build:preload && electron-builder --linux dir",
+    "dist:flatpak": "npm run dist:linux:dir && flatpak run org.flatpak.Builder --user --install --force-clean flatpak-build flatpak/io.github.Atem18.OutlookForLinux.yml",
+    "prestart": "npm run build:preload",
+    "pretest:e2e": "npm run build:preload"
+  },
+  "dependencies": {
+    "electron-log": "^5.4.4",
+    "electron-store": "11.0.2",
+    "electron-window-state": "5.0.3",
+    "yargs": "^18.2.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.64.1",
+    "electron": "44.9.1",
+    "electron-builder": "26.15.7",
+    "esbuild": "0.28.2",
+    "eslint": "^10.14.0",
+    "globals": "^17.13.0"
+  },
+  "build": {
+    "appId": "outlook-for-linux",
+    "productName": "Outlook for Linux",
+    "files": [
+      "app/**/*",
+      "LICENSE.md"
+    ],
+    "directories": {
+      "buildResources": "build"
+    },
+    "linux": {
+      "icon": "build/icons",
+      "category": "Office;Email;Calendar;Network",
+      "packageCategory": "mail",
+      "executableName": "outlook-for-linux",
+      "synopsis": "Outlook for Linux",
+      "description": "Unofficial Microsoft Outlook client for Linux using Electron. It wraps the Outlook web app as a standalone desktop application.",
+      "desktop": {
+        "entry": {
+          "Name": "Outlook for Linux",
+          "Comment": "Unofficial client for Microsoft Outlook",
+          "StartupWMClass": "outlook-for-linux"
+        }
+      },
+      "target": [
+        "deb",
+        "snap"
+      ]
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0",
+        "libgbm1",
+        "libasound2t64 | libasound2"
+      ],
+      "recommends": [
+        "libappindicator3-1"
+      ]
+    },
+    "snap": {
+      "summary": "Outlook for Linux",
+      "confinement": "strict",
+      "grade": "devel",
+      "base": "core24",
+      "plugs": [
+        "default",
+        "network-manager-observe",
+        "removable-media",
+        "screen-inhibit-control"
+      ]
+    }
+  }
+}
