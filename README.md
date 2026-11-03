@@ -113,7 +113,7 @@ Copy `dist/outlook-for-linux_<version>_amd64.deb` to the target machine and
 install it with apt, which also installs the libraries it needs:
 
 ```bash
-sudo apt install ./outlook-for-linux_0.1.0_amd64.deb
+sudo apt install ./outlook-for-linux_2.0.0_amd64.deb
 ```
 
 Outlook for Linux is then in the applications menu, or run
