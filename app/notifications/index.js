@@ -27,6 +27,11 @@ class NotificationService {
    */
   constructor(getWindow, iconPath) {
     this.#getWindow = getWindow;
+    this.setIconPath(iconPath);
+  }
+
+  /** @param {string} iconPath - the icon for notifications from now on */
+  setIconPath(iconPath) {
     this.#icon = nativeImage.createFromPath(iconPath).resize({ width: 128, height: 128 });
   }
 

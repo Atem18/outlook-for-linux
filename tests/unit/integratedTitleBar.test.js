@@ -20,8 +20,8 @@ describe("isIntegratedTitleBar", () => {
     assert.equal(isIntegratedTitleBar(integrated, "win32"), true);
   });
 
-  it("is off by default and on macOS", () => {
-    assert.equal(options.titleBar.default, "system");
+  it("is on by default, off when set to system and on macOS", () => {
+    assert.equal(options.titleBar.default, "integrated");
     assert.equal(isIntegratedTitleBar({ titleBar: "system" }, "linux"), false);
     assert.equal(isIntegratedTitleBar({}, "linux"), false);
     assert.equal(isIntegratedTitleBar(integrated, "darwin"), false);

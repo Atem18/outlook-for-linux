@@ -20,6 +20,10 @@ finish-args:
   - --socket=pulseaudio
   - --device=dri
   - --filesystem=xdg-download
+  # App Icon: a copy of the chosen icon in the user icon theme, so the
+  # taskbar and launcher follow (app/appIcon/themeIcon.js). Nothing else of
+  # ~/.local/share is visible.
+  - --filesystem=xdg-data/icons:create
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.kde.StatusNotifierWatcher
   - --talk-name=org.freedesktop.portal.Desktop

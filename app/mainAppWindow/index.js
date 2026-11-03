@@ -12,6 +12,7 @@ const ConnectionMonitor = require("../connection");
 const DownloadFeedback = require("../downloads");
 const Zoom = require("../zoom");
 const CustomCSS = require("../customCSS");
+const AppIcon = require("../appIcon");
 const {
   isIntegratedTitleBar,
   titleBarWindowOptions,
@@ -26,6 +27,7 @@ let window = null;
 let tray = null;
 let zoom = null;
 let customCSS = null;
+let appIcon = null;
 let appConfig = null;
 let store = null;
 // A mailto: link that arrived before the main window existed.
@@ -182,7 +184,7 @@ function applyLinkPolicy(webContents, config) {
         overrideBrowserWindowOptions: {
           parent: window,
           autoHideMenuBar: true,
-          icon: ICON_PATH,
+          icon: appIcon.windowImage(),
           webPreferences: webPreferences(config),
         },
       };
@@ -291,7 +293,7 @@ function createWindow(config, settingsStore) {
     minWidth: 640,
     minHeight: 480,
     show: false,
-    icon: ICON_PATH,
+    icon: appIcon.windowImage(),
     autoHideMenuBar: config.menubarAutoHide,
     ...titleBarWindowOptions(config, nativeTheme.shouldUseDarkColors),
     webPreferences: mainWebPreferences(config),
@@ -301,13 +303,13 @@ function createWindow(config, settingsStore) {
 
   let unread = null;
   if (config.trayIcon) {
-    tray = new AppTray(window, ICON_PATH, quit);
+    tray = new AppTray(window, appIcon.path, quit);
+    buildMenu();
     unread = new UnreadService(() => window, tray);
     unread.attach(session.fromPartition(config.partition));
   }
-  if (config.notifications) {
-    new NotificationService(() => window, ICON_PATH).initialize();
-  }
+  const notifications = config.notifications ? new NotificationService(() => window, appIcon.path) : null;
+  notifications?.initialize();
 
   window.once("ready-to-show", () => {
     // With a tray, starting minimized means starting hidden in it.
@@ -327,7 +329,15 @@ function createWindow(config, settingsStore) {
   });
 
   new ConnectionMonitor(window.webContents, config.chromeUserAgent).initialize();
-  new DownloadFeedback(window, ICON_PATH).attach(session.fromPartition(config.partition));
+  const downloads = new DownloadFeedback(window, appIcon.path);
+  downloads.attach(session.fromPartition(config.partition));
+  // Window icons follow in AppIcon itself; the menu's checkbox states too.
+  appIcon.onChange((iconPath) => {
+    tray?.setBaseIconPath(iconPath);
+    notifications?.setIconPath(iconPath);
+    downloads.setIconPath(iconPath);
+    buildMenu();
+  });
 
   // A new page (reload, sign-out) has no unread count until Outlook reports one.
   window.webContents.on("did-navigate", () => unread?.reset());
@@ -361,11 +371,15 @@ function buildMenu() {
         { label: "Zoom Out", accelerator: "CmdOrCtrl+-", click: (_item, win) => zoom?.step(-1, win) },
         { type: "separator" },
         { role: "togglefullscreen" },
+        { type: "separator" },
+        appIcon.menuItem(() => window),
       ],
     },
     { role: "windowMenu" },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  // Reachable from the tray too: the integrated title bar has no menu bar.
+  tray?.setMenuItems([appIcon.menuItem(() => window)]);
 }
 
 function quit() {
@@ -419,7 +433,7 @@ async function openCompose(mailto) {
     title: "Outlook for Linux",
     width: 900,
     height: 760,
-    icon: ICON_PATH,
+    icon: appIcon.windowImage(),
     autoHideMenuBar: true,
     ...titleBarWindowOptions(appConfig, nativeTheme.shouldUseDarkColors),
     webPreferences: mainWebPreferences(appConfig),
@@ -458,6 +472,7 @@ function handleLaunchArgs(args) {
 function onAppReady(config, settingsStore) {
   appConfig = config;
   store = settingsStore;
+  appIcon = new AppIcon(config, settingsStore, ICON_PATH);
   buildMenu();
   registerMailClient(config);
   createWindow(config, settingsStore);

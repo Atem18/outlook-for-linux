@@ -13,6 +13,7 @@ class AppTray {
   #baseImage;
   #onQuit;
   #lastCount = 0;
+  #lastBadge = null;
 
   /**
    * @param {Electron.BrowserWindow} window
@@ -22,18 +23,43 @@ class AppTray {
   constructor(window, iconPath, onQuit) {
     this.#window = window;
     this.#onQuit = onQuit;
-    // Tray icons are drawn at 22-24px; a 64px source scales down cleanly.
-    this.#baseImage = nativeImage.createFromPath(iconPath).resize({ width: ICON_SIZE, height: ICON_SIZE });
+    this.#baseImage = AppTray.#loadBase(iconPath);
     this.#tray = new Tray(this.#baseImage);
     this.#tray.setToolTip(trayTooltip(0));
     this.#tray.on("click", () => this.toggleWindow());
+    this.setMenuItems([]);
+  }
+
+  /**
+   * Rebuilds the context menu with extra items between Show and Quit (the
+   * App Icon submenu: with the integrated title bar there is no menu bar).
+   * @param {Electron.MenuItemConstructorOptions[]} items
+   */
+  setMenuItems(items) {
+    if (this.#tray.isDestroyed()) return;
     this.#tray.setContextMenu(
       Menu.buildFromTemplate([
         { label: "Show Outlook", click: () => this.showWindow() },
         { type: "separator" },
+        ...(items.length ? [...items, { type: "separator" }] : []),
         { label: "Quit", click: () => this.#onQuit() },
       ])
     );
+  }
+
+  // Tray icons are drawn at 22-24px; a 64px source scales down cleanly.
+  static #loadBase(iconPath) {
+    return nativeImage.createFromPath(iconPath).resize({ width: ICON_SIZE, height: ICON_SIZE });
+  }
+
+  /**
+   * Swaps the icon (App Icon menu), keeping the unread badge on it.
+   * @param {string} iconPath
+   */
+  setBaseIconPath(iconPath) {
+    if (this.#tray.isDestroyed()) return;
+    this.#baseImage = AppTray.#loadBase(iconPath);
+    this.setUnread(this.#lastCount, this.#lastBadge);
   }
 
   showWindow() {
@@ -68,6 +94,7 @@ class AppTray {
       this.#window.flashFrame(true);
     }
     this.#lastCount = count;
+    this.#lastBadge = badgeDataUrl;
   }
 
   #badgedImage(badgeDataUrl) {

@@ -20,6 +20,11 @@ class DownloadFeedback {
    */
   constructor(window, iconPath) {
     this.#window = window;
+    this.setIconPath(iconPath);
+  }
+
+  /** @param {string} iconPath - the icon for notifications from now on */
+  setIconPath(iconPath) {
     this.#icon = nativeImage.createFromPath(iconPath).resize({ width: 128, height: 128 });
   }
 
