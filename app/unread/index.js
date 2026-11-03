@@ -1,4 +1,5 @@
 const { app, ipcMain } = require("electron");
+const RequestHeaders = require("../requestHeaders");
 const {
   apiOriginOf,
   bearerFrom,
@@ -51,15 +52,14 @@ class UnreadService {
   /** @param {Electron.Session} session - the Outlook session */
   attach(session) {
     this.#session = session;
-    // Electron keeps one onBeforeSendHeaders listener per session; this is
-    // the only one. A later module needing it (e.g. Intune SSO) must share it.
-    session.webRequest.onBeforeSendHeaders(
-      { urls: ["https://*/owa/service.svc*"] },
-      (details, callback) => {
-        this.#capture(details);
-        callback({ requestHeaders: details.requestHeaders });
-      }
-    );
+    // Electron keeps one onBeforeSendHeaders listener per session, so it is
+    // shared through app/requestHeaders (Intune SSO uses it too).
+    RequestHeaders.for(session).use({
+      name: "unread",
+      urls: ["https://*/owa/service.svc*"],
+      matches: (url) => apiOriginOf(url) !== null,
+      handle: (details) => this.#capture(details),
+    });
 
     // Inbox count read from the folder pane, when the pane is rendered
     ipcMain.on("unread-dom-count", (event, count) => {

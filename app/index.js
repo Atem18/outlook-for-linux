@@ -1,4 +1,4 @@
-const { app } = require("electron");
+const { app, session } = require("electron");
 const path = require("node:path");
 const log = require("electron-log/main");
 
@@ -52,13 +52,36 @@ const config = appConfig.startupConfig;
 const mainAppWindow = require("./mainAppWindow");
 
 if (app.requestSingleInstanceLock()) {
-  // A second launch (desktop icon, taskbar) focuses the running window.
-  // mailto: arguments will be routed from here once the handler exists.
-  app.on("second-instance", () => mainAppWindow.show());
+  // A second launch with a mailto: link (another app's "send email") opens a
+  // compose window; any other launch (desktop icon, taskbar) focuses the
+  // running window.
+  app.on("second-instance", (_event, args) => {
+    if (!mainAppWindow.handleLaunchArgs(args)) mainAppWindow.show();
+  });
 
   app.on("window-all-closed", () => app.quit());
 
-  app.whenReady().then(() => mainAppWindow.onAppReady(config, appConfig.settingsStore));
+  // A mailto: link on this launch's own command line waits for the window.
+  mainAppWindow.handleLaunchArgs(process.argv);
+  app.whenReady().then(async () => {
+    // Intune first: the first sign-in request already needs the broker's
+    // cookie. Waits up to ~5 s for the broker, only when enabled.
+    if (config.intune) {
+      const intune = require("./intune");
+      await intune.initSso(config.intuneUser);
+      intune.attach(session.fromPartition(config.partition));
+    }
+    const clientCertificate = require("./clientCertificate");
+    if (config.clientCertPinDialog) clientCertificate.initialize();
+    clientCertificate.importPkcs12(config.clientCertPath, config.clientCertPassword);
+    mainAppWindow.onAppReady(config, appConfig.settingsStore);
+    require("./globalShortcuts").register(config, () => mainAppWindow.window, app);
+    if (process.platform === "linux" && config.webauthn) {
+      require("./webauthn")
+        .initialize(mainAppWindow.window, config)
+        .catch((err) => console.error("[WEBAUTHN] Could not initialise", { error: err.message }));
+    }
+  });
 } else {
   console.info("[STARTUP] Another instance is running; handing over");
   app.quit();

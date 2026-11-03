@@ -57,6 +57,69 @@ module.exports = {
       "Show Outlook's notifications (new mail, reminders) as native desktop notifications. Outlook's own notification settings still decide which ones it sends.",
     type: "boolean",
   },
+  defaultMailClient: {
+    default: false,
+    describe:
+      "Make the app the default mail client at startup, so mailto: links open an Outlook compose window. Off by default to leave an existing mail client alone; inside Flatpak or Snap, choose the default in the desktop settings instead.",
+    type: "boolean",
+  },
+  clientCertPath: {
+    default: "",
+    describe:
+      "Client certificate file (PKCS#12, .p12/.pfx) to import at startup, for sign-ins that ask for a certificate. Linux only.",
+    type: "string",
+  },
+  clientCertPassword: {
+    default: "",
+    describe: "Password of the clientCertPath file",
+    type: "string",
+  },
+  clientCertPinDialog: {
+    default: false,
+    describe:
+      "Show a PIN dialog when a smartcard (PKCS#11) client certificate needs unlocking. Without it such sign-ins fail silently. Linux only; the card must already be registered with NSS (e.g. OpenSC and modutil).",
+    type: "boolean",
+  },
+  intune: {
+    default: false,
+    describe:
+      "Single sign-on through the Microsoft Identity Broker on Intune-enrolled machines (work accounts): signs in with the device's credentials and satisfies device-compliance policies. Needs microsoft-identity-broker running.",
+    type: "boolean",
+  },
+  intuneUser: {
+    default: "",
+    describe: "Broker account to use when it holds several (user@example.com); the first one when empty",
+    type: "string",
+  },
+  webauthn: {
+    default: false,
+    describe:
+      "Hardware security keys (FIDO2, e.g. YubiKey) for Microsoft sign-in, through fido2-tools (install the fido2-tools or libfido2 package). Linux only.",
+    type: "boolean",
+  },
+  webauthnExtraOrigins: {
+    default: [],
+    describe:
+      "Exact https origins, beyond Microsoft's sign-in pages, allowed to use hardware security keys, for organisations that sign in on their own identity provider, e.g. [\"https://sso.example.com\"].",
+    type: "array",
+  },
+  webauthnDebug: {
+    default: false,
+    describe: "Verbose hardware security key logs, for troubleshooting",
+    type: "boolean",
+  },
+  customCSSLocation: {
+    default: "",
+    describe:
+      "Path to a CSS file injected into Outlook's pages, to restyle them. Empty for none.",
+    type: "string",
+  },
+  globalShortcuts: {
+    default: [],
+    describe:
+      "Shortcuts registered system-wide and forwarded to Outlook while the app is not focused, as Electron accelerators, e.g. [\"Control+Shift+M\"]. On Wayland, start with --enable-features=GlobalShortcutsPortal.",
+    type: "array",
+  },
   menubarAutoHide: {
     default: true,
     describe: "Hide the menu bar until Alt is pressed",

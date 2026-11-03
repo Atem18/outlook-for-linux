@@ -3,12 +3,15 @@ const path = require("node:path");
 const windowStateKeeper = require("electron-window-state");
 const { classifyWindowOpen, classifyNavigation } = require("./linkPolicy");
 const { mailboxOrigin, startUrl, isSignedOutPage } = require("./startUrl");
+const { PROTOCOL_SCHEMES, parseMailto, findMailtoArg, composeUrl } = require("./mailtoLink");
 const configOptions = require("../config/options");
 const AppTray = require("../tray");
 const UnreadService = require("../unread");
 const NotificationService = require("../notifications");
 const ConnectionMonitor = require("../connection");
 const DownloadFeedback = require("../downloads");
+const Zoom = require("../zoom");
+const CustomCSS = require("../customCSS");
 const {
   isIntegratedTitleBar,
   titleBarWindowOptions,
@@ -21,6 +24,18 @@ const ICON_PATH = path.join(__dirname, "..", "assets", "icons", "icon-512.png");
 
 let window = null;
 let tray = null;
+let zoom = null;
+let customCSS = null;
+let appConfig = null;
+let store = null;
+// A mailto: link that arrived before the main window existed.
+let pendingMailto = null;
+// webContents of open mailto: compose windows. They load the preload for
+// their title bar only.
+const composeContents = new Set();
+// The main window's header colour, sampled from its top rows; compose windows
+// paint their title bar strip with it.
+let mainHeaderColor = null;
 // Set when the user really quits (tray menu, Ctrl+Q, session end), so the
 // close-to-tray handler lets the window close.
 let quitting = false;
@@ -71,40 +86,83 @@ function isMainWindowSender(event) {
   return window && !window.isDestroyed() && event.sender === window.webContents;
 }
 
+function isComposeSender(event) {
+  return composeContents.has(event.sender);
+}
+
 function registerIpcHandlers(config) {
   // The subset of the startup config the main window's preload reads (synchronous: the preload needs it before the page's scripts run)
   ipcMain.on("get-renderer-config", (event) => {
-    event.returnValue = isMainWindowSender(event)
-      ? { titleBar: config.titleBar, notifications: config.notifications, trayIcon: config.trayIcon }
-      : {};
+    if (isMainWindowSender(event)) {
+      event.returnValue = {
+        titleBar: config.titleBar,
+        notifications: config.notifications,
+        trayIcon: config.trayIcon,
+        webauthn: config.webauthn,
+        webauthnExtraOrigins: config.webauthnExtraOrigins,
+      };
+    } else if (isComposeSender(event)) {
+      // Notifications and the unread count belong to the main window alone.
+      event.returnValue = isIntegratedTitleBar(config)
+        ? { titleBar: config.titleBar, popOutTitleBar: { color: mainHeaderColor } }
+        : {};
+    } else {
+      event.returnValue = {};
+    }
   });
 
 
   if (!isIntegratedTitleBar(config)) return;
   // Integrated title bar: match the window controls to the Outlook top bar's height and colour
   ipcMain.on("title-bar-overlay-update", async (event, payload) => {
-    if (!isMainWindowSender(event)) return;
+    if (!isMainWindowSender(event) && !isComposeSender(event)) return;
+    const target = BrowserWindow.fromWebContents(event.sender);
+    if (!target) return;
     const update = sanitizeOverlayUpdate(payload);
     if (!update) return;
     const { sample, ...overlay } = update;
     if (sample) {
-      Object.assign(overlay, await samplePageColors(update.height));
+      Object.assign(overlay, await samplePageColors(target, update.height));
     }
+    if (target === window) refreshMainHeaderColor();
     try {
-      if (!window.isDestroyed()) window.setTitleBarOverlay(overlay);
+      if (!target.isDestroyed()) target.setTitleBarOverlay(overlay);
     } catch (err) {
       console.warn("[TITLE_BAR] Could not update the window controls", { error: err.message });
     }
   });
 }
 
+// The header colour for compose windows' title bar strips. Not the colour
+// behind the main window's controls: that end of the bar holds the avatar.
+// The top two rows, across the whole width, are bare header (its icons,
+// search box and avatar are vertically centred), or the average of a theme
+// image. Sampled when a compose window opens (the main window reports its
+// controls' colour mostly while still loading) and on those reports; open
+// compose windows follow changes, such as a theme switch.
+async function refreshMainHeaderColor() {
+  if (!window || window.isDestroyed()) return;
+  try {
+    const [contentWidth] = window.getContentSize();
+    const image = await window.webContents.capturePage({ x: 0, y: 1, width: contentWidth, height: 2 });
+    if (image.isEmpty()) return;
+    const colors = overlayColorsFromPixel(image.resize({ width: 1, height: 1, quality: "best" }).toBitmap());
+    const color = colors?.color.slice(0, 7);
+    if (!color || color === mainHeaderColor) return;
+    mainHeaderColor = color;
+    for (const contents of composeContents) contents.send("pop-out-header-color", color);
+  } catch {
+    // keep the last colour
+  }
+}
+
 // Averages the page behind the window controls down to one pixel. Returns {}
 // (keep the renderer's fallback colours) when there is nothing to sample yet,
 // e.g. before the window is first shown, when capturePage fails.
-async function samplePageColors(height) {
+async function samplePageColors(target, height) {
   try {
-    const [contentWidth] = window.getContentSize();
-    const image = await window.webContents.capturePage(sampleRect(contentWidth, height));
+    const [contentWidth] = target.getContentSize();
+    const image = await target.webContents.capturePage(sampleRect(contentWidth, height));
     if (image.isEmpty()) return {};
     const pixel = image.resize({ width: 1, height: 1, quality: "best" }).toBitmap();
     return overlayColorsFromPixel(pixel) ?? {};
@@ -136,6 +194,7 @@ function applyLinkPolicy(webContents, config) {
   webContents.on("did-create-window", (child) => {
     child.webContents.setUserAgent(config.chromeUserAgent);
     applyLinkPolicy(child.webContents, config);
+    attachPageFeatures(child.webContents);
   });
 
   // See classifyNavigation for why main-frame https navigation is allowed.
@@ -145,6 +204,12 @@ function applyLinkPolicy(webContents, config) {
     event.preventDefault();
     if (action === "external") openExternal(url);
   });
+}
+
+// Saved zoom and the user's custom CSS, for every Outlook window.
+function attachPageFeatures(webContents) {
+  zoom?.attach(webContents);
+  customCSS?.attach(webContents);
 }
 
 function configureSpellChecker(config) {
@@ -268,6 +333,9 @@ function createWindow(config, settingsStore) {
   window.webContents.on("did-navigate", () => unread?.reset());
 
   configureSpellChecker(config);
+  zoom = new Zoom(() => window, settingsStore);
+  customCSS = new CustomCSS(config.customCSSLocation);
+  attachPageFeatures(window.webContents);
   applyLinkPolicy(window.webContents, config);
   const url = startUrl(config.url, configOptions.url.default, settingsStore.get(MAILBOX_ORIGIN_KEY));
   trackMailbox(window.webContents, config, settingsStore);
@@ -279,7 +347,22 @@ function buildMenu() {
   const template = [
     { role: "fileMenu" },
     { role: "editMenu" },
-    { role: "viewMenu" },
+    {
+      label: "View",
+      submenu: [
+        { role: "reload" },
+        { role: "forceReload" },
+        { role: "toggleDevTools" },
+        { type: "separator" },
+        // Not the zoom roles: these save the zoom for the next launch.
+        { label: "Actual Size", accelerator: "CmdOrCtrl+0", click: (_item, win) => zoom?.step(0, win) },
+        { label: "Zoom In", accelerator: "CmdOrCtrl+Plus", click: (_item, win) => zoom?.step(1, win) },
+        { label: "Zoom In", accelerator: "CmdOrCtrl+=", visible: false, acceleratorWorksWhenHidden: true, click: (_item, win) => zoom?.step(1, win) },
+        { label: "Zoom Out", accelerator: "CmdOrCtrl+-", click: (_item, win) => zoom?.step(-1, win) },
+        { type: "separator" },
+        { role: "togglefullscreen" },
+      ],
+    },
     { role: "windowMenu" },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
@@ -294,9 +377,95 @@ app.on("before-quit", () => {
   quitting = true;
 });
 
+// Opt-in (defaultMailClient): claiming mailto: silently would take it from
+// the user's current mail client. Inside Flatpak and Snap, xdg-settings cannot
+// change the host's handlers, so the desktop's own settings are the way there;
+// the desktop entry already lists the app as a mailto: handler.
+function registerMailClient(config) {
+  if (!config.defaultMailClient) return;
+  if (process.env.FLATPAK_ID || process.env.SNAP_INSTANCE_NAME) {
+    console.info("[MAILTO] Sandboxed install: choose the default mail client in the desktop settings");
+    return;
+  }
+  for (const scheme of PROTOCOL_SCHEMES) {
+    if (app.isDefaultProtocolClient(scheme)) continue;
+    const ok = app.setAsDefaultProtocolClient(scheme);
+    console.info("[MAILTO] Registering as default handler", { scheme, ok });
+  }
+}
+
+// The mailbox the compose window should open on: the one on screen, else the
+// remembered one, else wherever the app starts (sign-in for a new profile).
+function composeOrigin() {
+  const current = window && !window.isDestroyed() ? mailboxOrigin(window.webContents.getURL()) : null;
+  if (current) return current;
+  return new URL(startUrl(appConfig.url, configOptions.url.default, store.get(MAILBOX_ORIGIN_KEY))).origin;
+}
+
+// Opens Outlook's compose deeplink in a pop-out, as Outlook's own "open in
+// new window" does, so the mailbox in the main window keeps its state. With
+// the integrated title bar it gets a title bar strip in the main window's
+// header colour, as Outlook for Windows gives its pop-outs.
+async function openCompose(mailto) {
+  const fields = parseMailto(mailto);
+  if (!fields) return;
+  if (isIntegratedTitleBar(appConfig)) await refreshMainHeaderColor();
+  console.info("[MAILTO] Opening compose", {
+    recipients: fields.to.length + fields.cc.length + fields.bcc.length,
+    hasSubject: Boolean(fields.subject),
+    hasBody: Boolean(fields.body),
+  });
+  const compose = new BrowserWindow({
+    title: "Outlook for Linux",
+    width: 900,
+    height: 760,
+    icon: ICON_PATH,
+    autoHideMenuBar: true,
+    ...titleBarWindowOptions(appConfig, nativeTheme.shouldUseDarkColors),
+    webPreferences: mainWebPreferences(appConfig),
+  });
+  const contents = compose.webContents;
+  composeContents.add(contents);
+  contents.once("destroyed", () => composeContents.delete(contents));
+  applyLinkPolicy(contents, appConfig);
+  attachPageFeatures(contents);
+  contents.loadURL(composeUrl(fields, composeOrigin()), { userAgent: appConfig.chromeUserAgent })
+    .catch(() => console.warn("[MAILTO] Compose window failed to load"));
+}
+
+// An unhandled rejection ends the app (see app/index.js).
+function openComposeSafely(mailto) {
+  openCompose(mailto).catch((err) => console.error("[MAILTO] Could not open compose", { error: err.message }));
+}
+
+/**
+ * Handles the command line of this launch or of a second one: a mailto: link
+ * opens a compose window, anything else brings the main window back.
+ * @param {string[]} args
+ * @returns {boolean} true when a mailto: link was handled
+ */
+function handleLaunchArgs(args) {
+  const mailto = findMailtoArg(args);
+  if (!mailto) return false;
+  if (!window) {
+    pendingMailto = mailto;
+  } else {
+    openComposeSafely(mailto);
+  }
+  return true;
+}
+
 function onAppReady(config, settingsStore) {
+  appConfig = config;
+  store = settingsStore;
   buildMenu();
-  return createWindow(config, settingsStore);
+  registerMailClient(config);
+  createWindow(config, settingsStore);
+  if (pendingMailto) {
+    openComposeSafely(pendingMailto);
+    pendingMailto = null;
+  }
+  return window;
 }
 
 function show() {
@@ -309,6 +478,7 @@ function show() {
 module.exports = {
   onAppReady,
   show,
+  handleLaunchArgs,
   get window() {
     return window;
   },

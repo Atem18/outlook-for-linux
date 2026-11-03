@@ -1,4 +1,5 @@
-// Preload for the main Outlook window. Runs sandboxed in an isolated world
+// Preload for the main Outlook window, also loaded by the mailto: compose
+// window for its title bar (it gets no notifications or unread count). Runs sandboxed in an isolated world
 // (contextIsolation): it shares Outlook's DOM but not its JavaScript globals.
 // Only what tools explicitly pass through contextBridge reaches the page.
 //
@@ -8,7 +9,9 @@
 const { contextBridge, ipcRenderer } = require("electron");
 const notifications = require("./tools/notifications");
 const integratedTitleBar = require("./tools/integratedTitleBar");
+const popOutTitleBar = require("./tools/popOutTitleBar");
 const unreadBadge = require("./tools/unreadBadge");
+const webauthn = require("./tools/webauthn");
 
 // The subset of the startup config the tools read; see the
 // "get-renderer-config" handler in app/mainAppWindow/index.js. Synchronous on
@@ -35,10 +38,17 @@ function safely(name, fn) {
 
 // Page-world hooks: before any page script.
 safely("notifications", () => notifications.init(config, ipcRenderer, contextBridge));
+safely("webauthn", () => webauthn.init(config, ipcRenderer, contextBridge));
 
 // DOM tools: once the document exists.
 function initDomTools() {
-  safely("integratedTitleBar", () => integratedTitleBar.init(config, ipcRenderer));
+  // A pop-out (the mailto: compose window) has no Outlook top bar to put the
+  // window controls in, so it gets a title bar strip of its own instead.
+  if (config.popOutTitleBar) {
+    safely("popOutTitleBar", () => popOutTitleBar.init(config, ipcRenderer));
+  } else {
+    safely("integratedTitleBar", () => integratedTitleBar.init(config, ipcRenderer));
+  }
   safely("unreadBadge", () => unreadBadge.init(config, ipcRenderer));
 }
 

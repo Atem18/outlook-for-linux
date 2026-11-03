@@ -150,3 +150,13 @@ describe("integratedTitleBar renderer helpers", () => {
     assert.doesNotThrow(() => renderer.init({ titleBar: "system" }, {}));
   });
 });
+
+it("pop-out title bar takes the main window's header colour", () => {
+  const { stripColors, HEIGHT } = require("../../app/browser/tools/popOutTitleBar")._internals;
+  assert.deepEqual(stripColors("#0e0e0e"), { color: "#0e0e0e", symbolColor: "#ffffff" });
+  assert.deepEqual(stripColors("#f5f5f5"), { color: "#f5f5f5", symbolColor: "#242424" });
+  // No header colour yet: the system scheme decides.
+  assert.match(stripColors(null).color, /^#(000000|ffffff)$/);
+  assert.equal(stripColors("not a colour").color.length, 7);
+  assert.ok(HEIGHT >= 24 && HEIGHT <= 80);
+});
