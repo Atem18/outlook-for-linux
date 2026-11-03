@@ -8,3 +8,4 @@ Type=Application
 Categories=Office;Email;Calendar;Network;
 StartupWMClass=outlook-for-linux
 StartupNotify=true
+MimeType=x-scheme-handler/mailto;

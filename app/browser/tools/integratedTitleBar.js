@@ -129,7 +129,8 @@ function effectiveBackground(element) {
 }
 
 // The top bar is the widest element, from a known top-bar control upwards,
-// that is pinned to the top edge and no taller than a title bar. Wrappers
+// that is pinned to the top edge and no taller than a title bar (preferring
+// one that paints a background, see paintsBackground). Wrappers
 // between the control and the bar are often vertically centred, so they are
 // skipped rather than ending the walk; it ends once an element is taller than
 // a title bar.
@@ -142,12 +143,26 @@ function findTopBar() {
   if (!anchor) return null;
 
   let bar = null;
+  let paintedBar = null;
   for (let el = anchor; el && el !== document.body; el = el.parentElement) {
     const rect = el.getBoundingClientRect();
     if (rect.height > MAX_HEIGHT) break;
-    if (rect.top <= 1 && rect.width >= window.innerWidth * 0.9 && rect.height >= MIN_HEIGHT) bar = el;
+    if (rect.top <= 1 && rect.width >= window.innerWidth * 0.9 && rect.height >= MIN_HEIGHT) {
+      bar = el;
+      if (paintsBackground(el)) paintedBar = el;
+    }
   }
-  return bar;
+  return paintedBar ?? bar;
+}
+
+// Outlook paints its top bar on an inner element inside a transparent,
+// equally sized wrapper (#OwaTitleBar). Padding the wrapper to clear the
+// window controls would leave that corner unpainted, so the page background
+// showed through behind the controls as a lighter block. The painted element
+// is the bar when there is one.
+function paintsBackground(el) {
+  const rgb = parseRgb(getComputedStyle(el).backgroundColor);
+  return Boolean(rgb && rgb.a > 0.5);
 }
 
 // Outlook may support Window Controls Overlay itself (it ships as a PWA) and

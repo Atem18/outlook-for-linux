@@ -53,8 +53,9 @@ npm 12 blocks dependency install scripts unless approved
 - Safe Links hosts are outlook.com subdomains but must open externally.
 - `app/unread` borrows the bearer token Outlook sends to /owa/service.svc. It
   stays in main-process memory: never log it, never send it to a renderer,
-  never send it to another origin. It owns the session's only
-  `webRequest.onBeforeSendHeaders` listener (Electron allows one per session);
-  anything else needing that hook must share it.
+  never send it to another origin.
+- Electron allows one `webRequest.onBeforeSendHeaders` listener per session.
+  `app/requestHeaders` owns it; `app/unread` and `app/intune` register
+  handlers there. Never call `onBeforeSendHeaders` directly.
 - To stop a dev instance use `pkill -f "[o]utlook-for-linux/node_modules/electron/dist/electron"`;
   without the brackets pkill matches and kills its own shell.

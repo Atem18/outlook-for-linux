@@ -72,21 +72,57 @@ Chat, stickers) are not. When porting, read the teams-for-linux module first
 
 ## Phase 2: desktop integration
 
-- `mailto:` handler: register as the default mail client (desktop entry
-  `MimeType=x-scheme-handler/mailto`, `setAsDefaultProtocolClient`), translate
-  to `/mail/deeplink/compose?to=&subject=&body=&cc=&bcc=`, route through
-  `second-instance`. Model: teams-for-linux `protocolLink.js` (`a85cef4c`)
+- `mailto:` handler (done): every package declares `x-scheme-handler/mailto`;
+  a `mailto:` link on the command line (first launch or `second-instance`)
+  opens Outlook's `/mail/deeplink/compose` in a pop-out on the current or
+  remembered mailbox, so the main window keeps its state. Parsing follows
+  RFC 6068 (`+` stays literal). Claiming the default is opt-in
+  (`defaultMailClient`, skipped inside Flatpak/Snap). Model: teams-for-linux
+  `protocolLink.js` (`a85cef4c`)
+  - Cc/Bcc: the deeplink ignores `cc`/`bcc` (verified on a work mailbox).
+    `?mailtouri=<raw link>` (what Outlook registers as its browser handler)
+    fills them, but then shows spaces in subject and body as "+", and other
+    parameters are ignored next to it. Untested: `Cc`/`Bcc` capitalised,
+    literal spaces inside `mailtouri`
+  - Integrated title bar: the compose window gets a 32px title strip above
+    the ribbon, as Outlook for Windows gives its pop-outs, in the main
+    window's header colour (sampled from its top rows) with the window
+    controls in it (`app/browser/tools/popOutTitleBar.js`). Outlook's own
+    pop-outs (about:blank windows Outlook writes into) still use the system
+    title bar. When a mailto: link starts the app, the strip may take the
+    loading screen's colour until the main window reports its bar again
+  - Follow-up: verify by hand on signed-in work and personal profiles (the
+    compose page, what Outlook shows after sending, links from Firefox and
+    `xdg-email`; attachments wait for "send to mail recipient" in Phase 3)
 - Calendar reminders while hidden (`backgroundThrottling` is already off;
-  verify that reminders fire from the tray)
+  verify that reminders fire from the tray): still to verify by hand
 - Multiple accounts in isolated partitions (port `profilesManager`,
   `profileSwitcher`), e.g. work and personal side by side. When porting, also
   apply only the visible account's title-bar overlay (teams-for-linux
-  `4a1605a1`) and keep one unread count per account
-- Intune / Microsoft Identity Broker SSO, client certificates, WebAuthn (port
-  `intune`, `clientCertificate`, `webauthn` with the wait-for-key fix
-  `1266c3e1`). Intune needs `webRequest.onBeforeSendHeaders`, which app/unread
-  already owns: share the listener
-- Themes and custom CSS, global shortcuts, zoom persistence
+  `4a1605a1`) and keep one unread count per account. Until then, a second
+  instance with `--user-data-dir` (README) runs a second account
+- Intune SSO (done, `intune`, `intuneUser`): the Microsoft Identity Broker's
+  PRT SSO cookie on login.microsoftonline.com requests, over D-Bus. The
+  session's one `onBeforeSendHeaders` listener is now shared through
+  `app/requestHeaders` (unread and Intune). Not logged from teams-for-linux:
+  the broker's raw account list. Untested here (no Intune-enrolled machine)
+- Client certificates (done): `clientCertPath` imports a PKCS#12 file;
+  `clientCertPinDialog` shows the smartcard PIN dialog (shared hardened
+  prompt in `app/_shared/securePrompt.js`). Untested here (no card)
+- WebAuthn / FIDO2 security keys (done, `webauthn`, `webauthnExtraOrigins`):
+  fido2-tools backend, PIN and touch prompts and the wait-for-key fix
+  (`1266c3e1`) ported as is. The window isolates its preload, so the
+  `navigator.credentials` patch runs in the page world through
+  `executeInMainWorld`, only on the allowed sign-in origins; the relay for
+  sign-in iframes stays in the isolated world. deb recommends fido2-tools;
+  the Flatpak would need `--device=all` and fido2-tools in the bundle.
+  Untested with a real key
+- Zoom persistence (done): View menu and Ctrl+wheel zoom, saved for the next
+  launch; Chromium applies it to every window of the same origin
+- Global shortcuts (done, `globalShortcuts`), ported as is
+- Custom CSS (done, `customCSSLocation`). Teams' packaged themes restyle
+  Teams and are not ported; Outlook's own themes and dark mode (following the
+  desktop's light/dark preference) cover theming
 
 ## Phase 3: extras
 

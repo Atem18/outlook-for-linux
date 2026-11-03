@@ -38,6 +38,17 @@ Options come from, in increasing precedence:
 | `trayIcon` | `true` | Tray icon with the unread count. |
 | `closeToTray` | `true` | Closing the window hides it to the tray, so notifications and reminders keep arriving. |
 | `notifications` | `true` | Show Outlook's notifications as native desktop notifications. |
+| `defaultMailClient` | `false` | Make the app the default mail client at startup (`mailto:` links open a compose window). |
+| `customCSSLocation` | `""` | CSS file injected into Outlook's pages. |
+| `globalShortcuts` | `[]` | Shortcuts forwarded to Outlook while the app is not focused, e.g. `["Control+Shift+M"]`. On Wayland, start with `--enable-features=GlobalShortcutsPortal`. |
+| `intune` | `false` | Single sign-on through the Microsoft Identity Broker on Intune-enrolled machines. |
+| `intuneUser` | `""` | Broker account to use when it holds several. |
+| `webauthn` | `false` | Hardware security keys (FIDO2) for sign-in, through `fido2-tools`. |
+| `webauthnExtraOrigins` | `[]` | Extra `https` sign-in origins allowed to use security keys (your own identity provider). |
+| `webauthnDebug` | `false` | Verbose security key logs. |
+| `clientCertPath` | `""` | PKCS#12 client certificate to import at startup. |
+| `clientCertPassword` | `""` | Its password. |
+| `clientCertPinDialog` | `false` | PIN dialog for smartcard (PKCS#11) client certificates. |
 | `menubarAutoHide` | `true` | Hide the menu bar until Alt is pressed. |
 | `spellCheckerLanguages` | `[]` | Spell checker languages; empty uses the system locale. |
 
@@ -54,6 +65,20 @@ data directory, as teams-for-linux does:
 ```bash
 outlook-for-linux --user-data-dir="$HOME/.config/outlook-for-linux-personal"
 ```
+
+### Default mail client
+
+Every package declares the app as a `mailto:` handler, so it shows up in the
+desktop's default-applications settings. Choosing it there makes "send email"
+links from other apps open an Outlook compose window. Outside Flatpak and
+Snap, `--defaultMailClient` (or `"defaultMailClient": true`) sets it at
+startup instead, like `xdg-settings set default-url-scheme-handler mailto
+outlook-for-linux.desktop`.
+
+### Zoom
+
+Ctrl+Plus, Ctrl+Minus, Ctrl+0 and Ctrl+wheel zoom Outlook; the zoom is kept
+for the next launch.
 
 ## Building packages
 
