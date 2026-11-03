@@ -53,6 +53,7 @@
     "globals": "^17.13.0"
   },
   "build": {
+    "npmRebuild": false,
     "appId": "outlook-for-linux",
     "productName": "Outlook for Linux",
     "files": [

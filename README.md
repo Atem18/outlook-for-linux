@@ -8,7 +8,7 @@ Not affiliated with or endorsed by Microsoft.
 
 ## Status
 
-Early development (Phase 1). See [docs/roadmap.md](docs/roadmap.md).
+Early development (Phase 2). See [docs/roadmap.md](docs/roadmap.md).
 
 ## Running from source
 
@@ -87,6 +87,53 @@ npm run dist:linux:deb     # .deb (x64 + arm64)
 npm run dist:linux:snap    # .snap (needs snapcraft)
 npm run dist:flatpak       # local Flatpak install (needs flatpak + org.flatpak.Builder)
 ```
+
+Packages land in `dist/`. The `.deb` names end in `_amd64.deb` (Intel/AMD)
+or `_arm64.deb` (ARM); build for the machine's architecture with
+`npx electron-builder --x64 -l deb --publish never` (or `--arm64`) to skip
+the other one.
+
+## Installing on Ubuntu or Debian
+
+There is no download yet, so build the `.deb` first, on any Linux machine
+with Node.js 22 or later (it does not have to be the one you install on):
+
+```bash
+git clone https://github.com/Atem18/outlook-for-linux.git
+cd outlook-for-linux
+npm install
+npm run dist:linux:deb
+```
+
+If packaging fails with `libcrypt.so.1: cannot open shared object file`,
+install the libcrypt compatibility package (`libxcrypt-compat` on Arch and
+Fedora; Ubuntu and Debian already have it) and run the last command again.
+
+Copy `dist/outlook-for-linux_<version>_amd64.deb` to the target machine and
+install it with apt, which also installs the libraries it needs:
+
+```bash
+sudo apt install ./outlook-for-linux_0.1.0_amd64.deb
+```
+
+Outlook for Linux is then in the applications menu, or run
+`outlook-for-linux` from a terminal. The package's dependencies cover
+Ubuntu 22.04 and later and Debian 12 and later. To make it the mail client for `mailto:` links, pick it
+in Settings → Default Applications → Mail, or run:
+
+```bash
+xdg-mime default outlook-for-linux.desktop x-scheme-handler/mailto
+```
+
+The package does not update itself: to upgrade, build the new version and
+install it the same way. To uninstall:
+
+```bash
+sudo apt remove outlook-for-linux
+```
+
+Settings and the signed-in session stay in `~/.config/outlook-for-linux`;
+delete that folder too to remove everything.
 
 ## License
 
