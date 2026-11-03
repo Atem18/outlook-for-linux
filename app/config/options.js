@@ -34,11 +34,17 @@ module.exports = {
     type: "boolean",
   },
   titleBar: {
-    default: "system",
+    default: "integrated",
     describe:
       "Title bar style. \"system\" uses the desktop's title bar; \"integrated\" hides it and draws the window controls over the Outlook top bar (client-side decorations). Linux and Windows; requires restart.",
     type: "string",
     choices: ["system", "integrated"],
+  },
+  appIcon: {
+    default: "",
+    describe:
+      "PNG used instead of the bundled icon for the windows, the tray and notifications. The App Icon menu (View menu, tray menu) sets it in config.json.",
+    type: "string",
   },
   trayIcon: {
     default: true,

@@ -33,3 +33,32 @@ test("an invalid user config is reported and ignored", () => {
   assert.deepEqual(configFile, {});
   assert.ok(error);
 });
+
+test("writeConfigOption sets and removes one option, keeping the others", () => {
+  const { writeConfigOption } = require("../../app/config");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ofl-config-"));
+  const file = path.join(dir, "config.json");
+  const read = () => JSON.parse(fs.readFileSync(file, "utf8"));
+
+  writeConfigOption(dir, "appIcon", "/a/icon.png");
+  assert.deepEqual(read(), { appIcon: "/a/icon.png" });
+
+  fs.writeFileSync(file, JSON.stringify({ titleBar: "system", appIcon: "/a/icon.png" }));
+  writeConfigOption(dir, "appIcon", "/b/icon.png");
+  assert.deepEqual(read(), { titleBar: "system", appIcon: "/b/icon.png" });
+
+  writeConfigOption(dir, "appIcon", undefined);
+  assert.deepEqual(read(), { titleBar: "system" });
+  assert.deepEqual(fs.readdirSync(dir), ["config.json"]);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("writeConfigOption never rewrites a config file that is not valid JSON", () => {
+  const { writeConfigOption } = require("../../app/config");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ofl-config-"));
+  const file = path.join(dir, "config.json");
+  fs.writeFileSync(file, '{ "titleBar": "system", }');
+  assert.throws(() => writeConfigOption(dir, "appIcon", "/a/icon.png"));
+  assert.equal(fs.readFileSync(file, "utf8"), '{ "titleBar": "system", }');
+  fs.rmSync(dir, { recursive: true, force: true });
+});

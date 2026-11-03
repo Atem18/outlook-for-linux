@@ -16,8 +16,8 @@ Chat, stickers) are not. When porting, read the teams-for-linux module first
 - Packaged as Flatpak (`io.github.Atem18.OutlookForLinux`), deb and snap
 - Main window sandboxed with contextIsolation; the preload is bundled with
   esbuild because a sandboxed preload can only require `electron`
-- Integrated title bar (CSD) available but off by default (`titleBar: "system"`),
-  as in teams-for-linux
+- Integrated title bar (CSD) on by default since 2.1.0 (`titleBar:
+  "integrated"`; teams-for-linux defaults to `"system"`)
 - Development runs in the `outlook-for-linux` distrobox (see CLAUDE.md)
 
 ## Phase 0: scaffold (done)
@@ -123,6 +123,13 @@ Chat, stickers) are not. When porting, read the teams-for-linux module first
 - Custom CSS (done, `customCSSLocation`). Teams' packaged themes restyle
   Teams and are not ported; Outlook's own themes and dark mode (following the
   desktop's light/dark preference) cover theming
+- Custom app icon (done, `appIcon`, View → App Icon): windows, tray and
+  notifications, changed live; an opt-in copy into the user icon theme so
+  the taskbar and launcher follow (teams-for-linux `f67da455`, window class
+  fixed until multiple instances get a `--class`). Unlike teams-for-linux it
+  works in the Flatpak too: `--filesystem=xdg-data/icons:create`, written
+  under the Flatpak id. Not in the Snap. `appIconType` (light/dark tray
+  variants) is not ported: there is one bundled icon
 
 ## Phase 3: extras
 
@@ -132,7 +139,6 @@ Chat, stickers) are not. When porting, read the teams-for-linux module first
 - Auto-update for deb (electron-updater)
 - Flathub submission with vendored npm sources (flatpak-node-generator); Snap
   Store
-- Copy a chosen app icon into the user icon theme (teams-for-linux `f67da455`)
 
 ## Could go back to teams-for-linux
 

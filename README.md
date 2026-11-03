@@ -34,7 +34,8 @@ Options come from, in increasing precedence:
 | `partition` | `persist:outlook` | Session partition. Use different values to run separate accounts side by side. |
 | `chromeUserAgent` | Chrome UA | User agent sent to Outlook. |
 | `minimized` | `false` | Start minimized. |
-| `titleBar` | `system` | `integrated` hides the desktop title bar and draws the window buttons over the Outlook top bar (client-side decorations). |
+| `titleBar` | `integrated` | `integrated` hides the desktop title bar and draws the window buttons over the Outlook top bar (client-side decorations); `system` keeps the desktop's title bar. |
+| `appIcon` | `""` | PNG used instead of the bundled icon (windows, tray, notifications). See [App icon](#app-icon). |
 | `trayIcon` | `true` | Tray icon with the unread count. |
 | `closeToTray` | `true` | Closing the window hides it to the tray, so notifications and reminders keep arriving. |
 | `notifications` | `true` | Show Outlook's notifications as native desktop notifications. |
@@ -75,6 +76,28 @@ Snap, `--defaultMailClient` (or `"defaultMailClient": true`) sets it at
 startup instead, like `xdg-settings set default-url-scheme-handler mailto
 outlook-for-linux.desktop`.
 
+### App icon
+
+App Icon → Choose App Icon…, in the View menu and the tray menu, swaps the icon of the windows, the tray
+and notifications for a PNG of your own, at once and for the next launches;
+Reset to default goes back. The menu stores its choice as the `appIcon`
+option in `config.json`, like teams-for-linux, so it can be set by hand there
+too or for one launch on the command line (`--appIcon=/path/to/icon.png`),
+handy for telling several instances apart. The menu leaves a `config.json`
+that is not valid JSON alone and says so.
+
+The menu keeps a copy of the chosen PNG (`app-icon.png`, next to
+`config.json`), so moving or deleting the original later is fine. In the Flatpak, a path given to
+`appIcon` must be one the sandbox can read, such as `~/Downloads`.
+
+The taskbar, launcher and app menu take their icon from the icon theme, not
+from the running app. The app offers to copy the chosen icon into
+`~/.local/share/icons` (the "Also use it for the taskbar and launcher"
+checkbox), under the launcher's icon name; the Flatpak may write only that
+folder of `~/.local/share`. It shows from the next start, on some desktops
+after logging in again. Reset removes the copied files, and only those. Not
+available in the Snap.
+
 ### Zoom
 
 Ctrl+Plus, Ctrl+Minus, Ctrl+0 and Ctrl+wheel zoom Outlook; the zoom is kept
@@ -113,7 +136,7 @@ Copy `dist/outlook-for-linux_<version>_amd64.deb` to the target machine and
 install it with apt, which also installs the libraries it needs:
 
 ```bash
-sudo apt install ./outlook-for-linux_2.0.0_amd64.deb
+sudo apt install ./outlook-for-linux_2.1.0_amd64.deb
 ```
 
 Outlook for Linux is then in the applications menu, or run

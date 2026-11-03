@@ -59,6 +59,33 @@ function argv(configPath, appVersion, args = process.argv.slice(1)) {
   return config;
 }
 
+/**
+ * Sets one option in the user config file, keeping the others, as
+ * teams-for-linux's menus write theirs to its config store. Runs only on a
+ * user action (App Icon menu): the startup config stays as loaded. A file
+ * that is not valid JSON is never rewritten, so a typo cannot cost the
+ * options in it; the error goes to the caller. Written to a temp file and
+ * renamed, so a crash cannot leave half a file.
+ * @param {string} configPath - Directory holding config.json (userData)
+ * @param {string} name - option name
+ * @param {unknown} value - undefined removes the option
+ */
+function writeConfigOption(configPath, name, value) {
+  const file = getConfigFilePath(configPath);
+  const config = readJsonFile(file);
+  if (value === undefined) {
+    if (!(name in config)) return;
+    delete config[name];
+  } else {
+    config[name] = value;
+  }
+  const temp = `${file}.tmp-${process.pid}`;
+  fs.mkdirSync(configPath, { recursive: true });
+  fs.writeFileSync(temp, `${JSON.stringify(config, null, 2)}\n`);
+  fs.renameSync(temp, file);
+}
+
 module.exports = argv;
 module.exports.getConfigFilePath = getConfigFilePath;
+module.exports.writeConfigOption = writeConfigOption;
 module.exports.loadConfigFiles = loadConfigFiles;
