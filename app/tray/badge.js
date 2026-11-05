@@ -53,4 +53,18 @@ function compositeBadge(base, badge) {
   return out;
 }
 
-module.exports = { trayTooltip, isBadgeDataUrl, sanitizeUnreadUpdate, compositeBadge };
+/**
+ * The sum of the accounts' unread counts, ignoring anything that is not a
+ * non-negative integer.
+ * @param {Iterable<unknown>} counts
+ * @returns {number}
+ */
+function unreadTotal(counts) {
+  let total = 0;
+  for (const count of counts) {
+    if (Number.isInteger(count) && count > 0) total += count;
+  }
+  return total;
+}
+
+module.exports = { trayTooltip, isBadgeDataUrl, sanitizeUnreadUpdate, compositeBadge, unreadTotal };

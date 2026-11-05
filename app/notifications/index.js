@@ -11,10 +11,14 @@ const MAX_TRACKED_NOTIFICATIONS = 50;
  * The page's `Notification` is replaced by a shim (app/browser/tools/
  * notifications.js) that forwards each one here. Clicking a notification
  * brings the window back and relays the click to the page, so Outlook opens
- * the message or reminder it was about.
+ * the message or reminder it was about. With several accounts, each
+ * account's page sends its own; a click shows that account, and the title
+ * names it.
  */
 class NotificationService {
   #getWindow;
+  #isOutlookPage;
+  #accountOf;
   #icon;
   // Electron's Notification is only weakly held by V8. Once the JS object is
   // collected, clicking it from the notification history does nothing
@@ -24,9 +28,18 @@ class NotificationService {
   /**
    * @param {() => Electron.BrowserWindow | null} getWindow
    * @param {string} iconPath
+   * @param {object} [accounts] - multiple accounts mode
+   * @param {(contents: Electron.WebContents) => boolean} [accounts.isOutlookPage] -
+   *   whether a sender is an account's Outlook page; the main window's only
+   *   by default
+   * @param {(contents: Electron.WebContents) => {name: string|null, show: () => void}|null} [accounts.accountOf] -
+   *   the sender's account: the name to add to the title (null with a single
+   *   account) and how to make it the visible one
    */
-  constructor(getWindow, iconPath) {
+  constructor(getWindow, iconPath, accounts = {}) {
     this.#getWindow = getWindow;
+    this.#isOutlookPage = accounts.isOutlookPage ?? ((contents) => contents === this.#getWindow()?.webContents);
+    this.#accountOf = accounts.accountOf ?? (() => null);
     this.setIconPath(iconPath);
   }
 
@@ -47,18 +60,19 @@ class NotificationService {
     ipcMain.on("notification-close", (event, id) => this.#close(event, id));
   }
 
-  #isFromMainWindow(event) {
+  #isFromOutlook(event) {
     const window = this.#getWindow();
-    return window && !window.isDestroyed() && event.sender === window.webContents;
+    return Boolean(window) && !window.isDestroyed() && this.#isOutlookPage(event.sender);
   }
 
   #show(event, payload) {
-    if (!this.#isFromMainWindow(event) || !Notification.isSupported()) return;
+    if (!this.#isFromOutlook(event) || !Notification.isSupported()) return;
     const options = sanitizeNotification(payload);
     if (!options) return;
 
+    const account = this.#accountOf(event.sender);
     const notification = new Notification({
-      title: options.title,
+      title: account?.name ? `${options.title} (${account.name})` : options.title,
       body: options.body,
       icon: this.#icon,
       silent: options.silent,
@@ -74,6 +88,7 @@ class NotificationService {
     notification.on("click", () => {
       this.#live.delete(options.id);
       this.#showWindow();
+      account?.show();
       relay("click");
     });
     notification.on("close", () => {
@@ -91,7 +106,7 @@ class NotificationService {
   }
 
   #close(event, id) {
-    if (!this.#isFromMainWindow(event) || !isNotificationId(id)) return;
+    if (!this.#isFromOutlook(event) || !isNotificationId(id)) return;
     const notification = this.#live.get(id);
     if (!notification) return;
     this.#live.delete(id);

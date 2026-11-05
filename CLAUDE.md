@@ -33,6 +33,11 @@ npm 12 blocks dependency install scripts unless approved
 - `app/appConfiguration/`: owns the frozen startup config and the settings store
 - `app/mainAppWindow/`: the window; `linkPolicy.js` (URL policy), `startUrl.js`
   (remembered mailbox) and `titleBar.js` (integrated title bar) are pure and tested
+- `app/accounts/`: multiple accounts (`multiAccount`); `store.js` is pure and
+  tested, `views.js` owns one `WebContentsView` per added account and the
+  switcher (`app/accountSwitcher/`). Anything that applies to "the Outlook
+  page" must go through `setupOutlookPage` in `app/mainAppWindow` and act on
+  `activeContents()`, not `window.webContents`
 - `app/browser/preload.js` + `tools/`: injected into Outlook. The preload runs
   sandboxed, so it is bundled by `scripts/buildPreload.js` into
   `preload.bundle.js` (git-ignored; built by `prestart`, `pretest:e2e`, packaging).

@@ -63,6 +63,12 @@ module.exports = {
       "Show Outlook's notifications (new mail, reminders) as native desktop notifications. Outlook's own notification settings still decide which ones it sends.",
     type: "boolean",
   },
+  multiAccount: {
+    default: false,
+    describe:
+      "Several Outlook accounts side by side in one window (e.g. work and personal), each signed in on its own, switched from the button in the bottom-left corner, the Accounts menu (also in the tray menu) or Ctrl+Alt+1…9. The current sign-in becomes the first account. Ignored with intune.",
+    type: "boolean",
+  },
   defaultMailClient: {
     default: false,
     describe:

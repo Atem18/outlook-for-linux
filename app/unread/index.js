@@ -7,14 +7,14 @@ const {
   getFolderBody,
   parseUnreadCount,
 } = require("./outlookApi");
-const { sanitizeUnreadUpdate } = require("../tray/badge");
+const { sanitizeUnreadUpdate, unreadTotal } = require("../tray/badge");
 
 const POLL_INTERVAL_MS = 30_000;
 // An API count older than this no longer beats the folder pane's.
 const API_FRESH_MS = 2 * POLL_INTERVAL_MS;
 
 /**
- * The Inbox unread count for the dock badge and the tray, from two sources:
+ * The Inbox unread count of one account, from two sources:
  *
  * 1. Outlook's own API: like teams-for-linux's graphApi, which borrows the
  *    Graph token the Teams web app already holds, this borrows the bearer
@@ -25,12 +25,12 @@ const API_FRESH_MS = 2 * POLL_INTERVAL_MS;
  * 2. The folder pane (app/browser/tools/unreadBadge.js): the fallback when the
  *    API has not answered recently. Outlook hides the pane in narrow windows.
  *
- * The badge image is drawn by the page, which has a canvas; the main process
- * asks for it with the count to draw.
+ * One per account (each has its own session and page); UnreadTotal below
+ * adds them up for the dock badge and the tray.
  */
 class UnreadService {
-  #getWindow;
-  #tray;
+  #getContents;
+  #onCount;
   #session = null;
   #token = null; // { origin, authorization }
   #apiCount = null;
@@ -39,18 +39,20 @@ class UnreadService {
   #shown = -1;
   #timer = null;
   #inFlight = false;
+  #domListener = null;
+  #destroyed = false;
 
   /**
-   * @param {() => Electron.BrowserWindow | null} getWindow
-   * @param {import("../tray")|null} tray - null without a tray icon: the
-   *   count then only goes to the dock badge
+   * @param {() => Electron.WebContents | null} getContents - the account's
+   *   Outlook page
+   * @param {(count: number) => void} onCount - called when the count changes
    */
-  constructor(getWindow, tray) {
-    this.#getWindow = getWindow;
-    this.#tray = tray;
+  constructor(getContents, onCount) {
+    this.#getContents = getContents;
+    this.#onCount = onCount;
   }
 
-  /** @param {Electron.Session} session - the Outlook session */
+  /** @param {Electron.Session} session - the account's session */
   attach(session) {
     this.#session = session;
     // Electron keeps one onBeforeSendHeaders listener per session, so it is
@@ -58,22 +60,17 @@ class UnreadService {
     RequestHeaders.for(session).use({
       name: "unread",
       urls: ["https://*/owa/service.svc*"],
-      matches: (url) => apiOriginOf(url) !== null,
+      matches: (url) => !this.#destroyed && apiOriginOf(url) !== null,
       handle: (details) => this.#capture(details),
     });
 
     // Inbox count read from the folder pane, when the pane is rendered
-    ipcMain.on("unread-dom-count", (event, count) => {
-      if (!this.#isFromMainWindow(event) || !Number.isInteger(count) || count < 0) return;
+    this.#domListener = (event, count) => {
+      if (!this.#isFromOwnPage(event) || !Number.isInteger(count) || count < 0) return;
       this.#domCount = count;
       this.#update();
-    });
-    // Badge image the page drew for the count it was asked to draw
-    ipcMain.on("unread-badge", (event, payload) => {
-      if (!this.#isFromMainWindow(event)) return;
-      const update = sanitizeUnreadUpdate(payload);
-      if (update && update.count === this.#shown) this.#tray?.setUnread(update.count, update.badge);
-    });
+    };
+    ipcMain.on("unread-dom-count", this.#domListener);
 
     this.#timer = setInterval(() => this.#poll(), POLL_INTERVAL_MS);
   }
@@ -88,12 +85,15 @@ class UnreadService {
   }
 
   destroy() {
+    this.#destroyed = true;
+    this.#token = null;
     clearInterval(this.#timer);
+    if (this.#domListener) ipcMain.removeListener("unread-dom-count", this.#domListener);
   }
 
-  #isFromMainWindow(event) {
-    const window = this.#getWindow();
-    return window && !window.isDestroyed() && event.sender === window.webContents;
+  #isFromOwnPage(event) {
+    const contents = this.#getContents();
+    return Boolean(contents) && !contents.isDestroyed() && event.sender === contents;
   }
 
   #capture(details) {
@@ -153,16 +153,74 @@ class UnreadService {
   #show(count) {
     if (count === this.#shown) return;
     this.#shown = count;
-    app.setBadgeCount(count);
-    if (count === 0) {
-      this.#tray?.setUnread(0, null);
-      return;
-    }
-    const window = this.#getWindow();
-    if (this.#tray && window && !window.isDestroyed()) {
-      window.webContents.send("unread-render", count);
-    }
+    this.#onCount(count);
   }
 }
 
-module.exports = UnreadService;
+/**
+ * Adds up the accounts' unread counts for the dock badge (Electron sends
+ * app.setBadgeCount over Unity LauncherEntry, which GNOME's docks and KDE's
+ * task manager show) and the tray. The tray's badge image is drawn by a page,
+ * which has a canvas; the main process asks for it with the count to draw.
+ */
+class UnreadTotal {
+  #tray;
+  #getRenderer;
+  #onCounts;
+  #counts = new Map();
+  #shown = -1;
+
+  /**
+   * @param {import("../tray")|null} tray - null without a tray icon
+   * @param {() => Electron.WebContents | null} getRenderer - the page that
+   *   draws the tray badge (the main window's)
+   * @param {(counts: Record<string, number>) => void} [onCounts] - every
+   *   account's count, on any change (the account switcher shows them)
+   */
+  constructor(tray, getRenderer, onCounts = () => {}) {
+    this.#tray = tray;
+    this.#getRenderer = getRenderer;
+    this.#onCounts = onCounts;
+    // Badge image the page drew for the count it was asked to draw
+    ipcMain.on("unread-badge", (event, payload) => {
+      const renderer = this.#getRenderer();
+      if (!renderer || event.sender !== renderer) return;
+      const update = sanitizeUnreadUpdate(payload);
+      if (update && update.count === this.#shown) this.#tray?.setUnread(update.count, update.badge);
+    });
+  }
+
+  /**
+   * @param {string} key - the account id
+   * @param {number} count
+   */
+  set(key, count) {
+    this.#counts.set(key, count);
+    this.#update();
+  }
+
+  /** @param {string} key - an account that is gone */
+  delete(key) {
+    if (this.#counts.delete(key)) this.#update();
+  }
+
+  get counts() {
+    return Object.fromEntries(this.#counts);
+  }
+
+  #update() {
+    this.#onCounts(this.counts);
+    const total = unreadTotal(this.#counts.values());
+    if (total === this.#shown) return;
+    this.#shown = total;
+    app.setBadgeCount(total);
+    if (total === 0) {
+      this.#tray?.setUnread(0, null);
+      return;
+    }
+    const renderer = this.#getRenderer();
+    if (this.#tray && renderer && !renderer.isDestroyed()) renderer.send("unread-render", total);
+  }
+}
+
+module.exports = { UnreadService, UnreadTotal };

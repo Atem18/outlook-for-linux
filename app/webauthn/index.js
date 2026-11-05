@@ -393,6 +393,7 @@ async function initialize(mainWindow, config) {
   if (!available) {
     log.warn("[WEBAUTHN] fido2-tools not found. Install with: sudo apt install fido2-tools");
     log.warn("[WEBAUTHN] Hardware key support will not be available");
+    pendingContents.clear();
     return;
   }
 
@@ -409,27 +410,51 @@ async function initialize(mainWindow, config) {
   // This is wired up via a message listener in the preload (see webauthnOverride.js).
 
   // Inject override into login subframes as they load (Layer 2).
-  if (mainWindow) {
-    mainWindow.webContents.on("did-frame-finish-load", (_event, isMainFrame, frameProcessId, frameRoutingId) => {
-      if (isMainFrame) return;
-      try {
-        const wf = webFrameMain.fromId(frameProcessId, frameRoutingId);
-        if (wf) injectIntoFrame(wf);
-      } catch (err) {
-        log.debug("[WEBAUTHN] Could not inject into frame", { errClass: log.classifyError(err) });
-      }
-    });
-    log.info("[WEBAUTHN] Frame injection listener registered");
-  }
-
   initialized = true;
+  if (mainWindow) watchFrames(mainWindow.webContents);
+  for (const contents of pendingContents) watchFrames(contents);
+  pendingContents.clear();
+
   log.info("[WEBAUTHN] Hardware security key support initialized", {
     extraOrigins: allowedOrigins.size - DEFAULT_ORIGINS.length,
   });
 }
 
+// Pages attached before initialize() finished (it waits for fido2-tools).
+const pendingContents = new Set();
+
+function watchFrames(contents) {
+  if (contents.isDestroyed()) return;
+  contents.on("did-frame-finish-load", (_event, isMainFrame, frameProcessId, frameRoutingId) => {
+    if (isMainFrame) return;
+    try {
+      const wf = webFrameMain.fromId(frameProcessId, frameRoutingId);
+      if (wf) injectIntoFrame(wf);
+    } catch (err) {
+      log.debug("[WEBAUTHN] Could not inject into frame", { errClass: log.classifyError(err) });
+    }
+  });
+  log.info("[WEBAUTHN] Frame injection listener registered");
+}
+
+/**
+ * Covers the sign-in subframes of another Outlook page (an added account's).
+ * Before initialize() has finished, the page waits for it; if fido2-tools
+ * turns out to be missing, nothing is registered.
+ * @param {Electron.WebContents} contents
+ */
+function attachWebContents(contents) {
+  if (initialized) {
+    watchFrames(contents);
+    return;
+  }
+  pendingContents.add(contents);
+  contents.once("destroyed", () => pendingContents.delete(contents));
+}
+
 module.exports = {
   initialize,
+  attachWebContents,
   // Exported for tests: the allowlist is the security gate, so it is asserted
   // on directly rather than through a replica.
   _applyExtraOrigins: (extraOrigins) => {
