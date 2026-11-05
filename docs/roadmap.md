@@ -64,8 +64,14 @@ Chat, stickers) are not. When porting, read the teams-for-linux module first
   API, folder-pane fallback selector, sign-out flow
 - Verify close-to-tray, Outlook-sent notifications (Outlook settings →
   Notifications → Desktop) and downloads by hand
-- KDE/GNOME taskbar badge: Unity LauncherEntry over D-Bus, as teams-for-linux
-  does (`app.setBadgeCount` only works on Unity)
+- KDE/GNOME taskbar badge (done): Electron 44's `app.setBadgeCount` and
+  `setProgressBar` broadcast Unity LauncherEntry themselves, under the
+  desktop name set per package (deb, Flatpak, Snap), with no
+  `com.canonical.Unity` owner check, so teams-for-linux's own emitter is not
+  ported (it would send every update twice). Checked with `dbus-monitor` on
+  GNOME. The unread count now runs without the tray icon too, for the badge.
+  Still to verify: KDE's task manager, and the Flatpak, whose D-Bus proxy may
+  drop the broadcast
 - Notification sounds
 - Unread count lags up to 30 s; consider refreshing right after Outlook's own
   `GetFolderChangeDigest`/notification-channel activity
@@ -118,7 +124,11 @@ Chat, stickers) are not. When porting, read the teams-for-linux module first
   the Flatpak would need `--device=all` and fido2-tools in the bundle.
   Untested with a real key
 - Zoom persistence (done): View menu and Ctrl+wheel zoom, saved for the next
-  launch; Chromium applies it to every window of the same origin
+  launch; Chromium applies it to every window of the same origin. The keys
+  are read in `before-input-event`, so they work when the page consumes them
+  and in pop-outs, and cover the numpad and AZERTY Ctrl+0; the menu
+  accelerators only label them. Electron emits `zoom-changed` twice per
+  Ctrl+wheel notch, so the second is dropped
 - Global shortcuts (done, `globalShortcuts`), ported as is
 - Custom CSS (done, `customCSSLocation`). Teams' packaged themes restyle
   Teams and are not ported; Outlook's own themes and dark mode (following the

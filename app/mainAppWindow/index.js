@@ -301,13 +301,14 @@ function createWindow(config, settingsStore) {
   windowState.manage(window);
   registerIpcHandlers(config);
 
-  let unread = null;
   if (config.trayIcon) {
     tray = new AppTray(window, appIcon.path, quit);
     buildMenu();
-    unread = new UnreadService(() => window, tray);
-    unread.attach(session.fromPartition(config.partition));
   }
+  // The dock badge: Electron sends app.setBadgeCount over Unity
+  // LauncherEntry, which GNOME's docks and KDE's task manager show.
+  const unread = new UnreadService(() => window, tray);
+  unread.attach(session.fromPartition(config.partition));
   const notifications = config.notifications ? new NotificationService(() => window, appIcon.path) : null;
   notifications?.initialize();
 
@@ -340,7 +341,7 @@ function createWindow(config, settingsStore) {
   });
 
   // A new page (reload, sign-out) has no unread count until Outlook reports one.
-  window.webContents.on("did-navigate", () => unread?.reset());
+  window.webContents.on("did-navigate", () => unread.reset());
 
   configureSpellChecker(config);
   zoom = new Zoom(() => window, settingsStore);
@@ -364,11 +365,12 @@ function buildMenu() {
         { role: "forceReload" },
         { role: "toggleDevTools" },
         { type: "separator" },
-        // Not the zoom roles: these save the zoom for the next launch.
-        { label: "Actual Size", accelerator: "CmdOrCtrl+0", click: (_item, win) => zoom?.step(0, win) },
-        { label: "Zoom In", accelerator: "CmdOrCtrl+Plus", click: (_item, win) => zoom?.step(1, win) },
-        { label: "Zoom In", accelerator: "CmdOrCtrl+=", visible: false, acceleratorWorksWhenHidden: true, click: (_item, win) => zoom?.step(1, win) },
-        { label: "Zoom Out", accelerator: "CmdOrCtrl+-", click: (_item, win) => zoom?.step(-1, win) },
+        // Not the zoom roles: these save the zoom for the next launch. The
+        // keys are handled by app/zoom (before the page sees them), so the
+        // accelerators here are labels only.
+        { label: "Actual Size", accelerator: "CmdOrCtrl+0", registerAccelerator: false, click: (_item, win) => zoom?.step(0, win) },
+        { label: "Zoom In", accelerator: "CmdOrCtrl+Plus", registerAccelerator: false, click: (_item, win) => zoom?.step(1, win) },
+        { label: "Zoom Out", accelerator: "CmdOrCtrl+-", registerAccelerator: false, click: (_item, win) => zoom?.step(-1, win) },
         { type: "separator" },
         { role: "togglefullscreen" },
         { type: "separator" },

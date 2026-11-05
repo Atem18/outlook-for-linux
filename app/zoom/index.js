@@ -1,6 +1,11 @@
-const { nextZoomFactor, validZoomFactor } = require("./steps");
+const { nextZoomFactor, validZoomFactor, zoomDirectionForInput } = require("./steps");
 
 const STORE_KEY = "zoomFactor";
+
+// Electron reports one Ctrl+wheel notch as two zoom-changed events about
+// 1.5 ms apart (seen on Electron 44, Linux), which skipped a preset per
+// notch. A real wheel never notches this fast.
+const DUPLICATE_WHEEL_MS = 10;
 
 /**
  * Remembers the zoom across restarts (Ctrl+Plus / Ctrl+Minus / Ctrl+0, the
@@ -27,14 +32,32 @@ class Zoom {
 
   /**
    * Applies the saved zoom to each page the window loads (sign-in and Outlook
-   * are different origins, and a reload resets it) and follows Ctrl+wheel.
+   * are different origins, and a reload resets it), and follows the zoom keys
+   * and Ctrl+wheel.
+   *
+   * The keys are read in before-input-event rather than left to the menu
+   * accelerators: those only see keys the page did not consume, they miss
+   * the numpad and Ctrl+0 on layouts where 0 needs Shift, and pop-outs have
+   * no menu of their own. preventDefault here also stops the accelerator, so
+   * a key zooms once.
    * @param {Electron.WebContents} webContents
    */
   attach(webContents) {
+    const { BrowserWindow } = require("electron");
     webContents.on("did-finish-load", () => webContents.setZoomFactor(this.factor));
-    webContents.on("zoom-changed", (_event, direction) => {
-      const { BrowserWindow } = require("electron");
-      this.step(direction === "in" ? 1 : -1, BrowserWindow.fromWebContents(webContents));
+    webContents.on("before-input-event", (event, input) => {
+      const direction = zoomDirectionForInput(input);
+      if (direction === null) return;
+      event.preventDefault();
+      this.step(direction, BrowserWindow.fromWebContents(webContents));
+    });
+    let lastWheel = { direction: null, at: 0 };
+    webContents.on("zoom-changed", (_event, zoomDirection) => {
+      const now = performance.now();
+      const duplicate = zoomDirection === lastWheel.direction && now - lastWheel.at < DUPLICATE_WHEEL_MS;
+      lastWheel = { direction: zoomDirection, at: now };
+      if (duplicate) return;
+      this.step(zoomDirection === "in" ? 1 : -1, BrowserWindow.fromWebContents(webContents));
     });
   }
 

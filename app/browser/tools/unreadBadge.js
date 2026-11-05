@@ -74,13 +74,15 @@ class UnreadBadge {
   #scheduled = false;
 
   /**
+   * The folder-pane count feeds the dock badge too, so it runs without the
+   * tray; badge images are only drawn for the tray.
    * @param {object} config - renderer config (`trayIcon` flag)
    * @param {Electron.IpcRenderer} ipcRenderer
    */
   init(config, ipcRenderer) {
-    if (!config?.trayIcon || !ipcRenderer) return;
+    if (!ipcRenderer) return;
     this.#ipcRenderer = ipcRenderer;
-    ipcRenderer.on(RENDER_CHANNEL, (_event, count) => this.#render(count));
+    if (config?.trayIcon) ipcRenderer.on(RENDER_CHANNEL, (_event, count) => this.#render(count));
     // Counts change through text updates inside the pane, so character data
     // is watched too; checks are batched to one per second.
     new MutationObserver(() => this.#schedule()).observe(document.documentElement, {

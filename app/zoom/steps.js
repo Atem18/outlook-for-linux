@@ -26,4 +26,24 @@ function validZoomFactor(value) {
   return typeof value === "number" && value >= ZOOM_FACTORS[0] && value <= ZOOM_FACTORS.at(-1) ? value : 1;
 }
 
-module.exports = { ZOOM_FACTORS, nextZoomFactor, validZoomFactor };
+const ZOOM_IN_KEYS = new Set(["+", "="]);
+const ZOOM_OUT_KEYS = new Set(["-", "_"]);
+
+/**
+ * The zoom a key press asks for, as Chrome reads it: Ctrl with + or = (the
+ * same key on US layouts), - or _, 0, or the numpad's +, - and 0. `key` is
+ * layout-aware; Ctrl+0 also matches by position because 0 needs Shift on
+ * AZERTY. Alt and Meta are excluded so AltGr combinations stay with the page.
+ * @param {{type?: string, key?: string, code?: string, control?: boolean, alt?: boolean, meta?: boolean}} input -
+ *   Electron's before-input-event input
+ * @returns {1|-1|0|null} in, out, reset, or not a zoom key
+ */
+function zoomDirectionForInput(input) {
+  if (input?.type !== "keyDown" || !input.control || input.alt || input.meta) return null;
+  if (ZOOM_IN_KEYS.has(input.key) || input.code === "NumpadAdd") return 1;
+  if (ZOOM_OUT_KEYS.has(input.key) || input.code === "NumpadSubtract") return -1;
+  if (input.key === "0" || input.code === "Digit0" || input.code === "Numpad0") return 0;
+  return null;
+}
+
+module.exports = { ZOOM_FACTORS, nextZoomFactor, validZoomFactor, zoomDirectionForInput };
