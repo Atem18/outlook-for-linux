@@ -8,8 +8,12 @@
  *
  * Why the folder pane: Outlook does call the Badging API
  * (navigator.setAppBadge), but only for mail that arrives while it is in the
- * background, and it calls clearAppBadge() on every load, so it is not the
- * unread total. The folder pane's Inbox item carries the total, under a
+ * background, and it calls clearAppBadge() on every load and whenever the
+ * window is focused, so it is not the unread total. Electron sends those
+ * calls straight to the dock (the same LauncherEntry badge as
+ * app.setBadgeCount), where they overwrote the real count, so the Badging
+ * API is taken away from the page (blockPageBadge) and Outlook, which checks
+ * for it, leaves the dock alone. The folder pane's Inbox item carries the total, under a
  * data-folder-name that does not depend on the interface language.
  *
  * Narrow windows: Outlook does not render the folder pane at all below a
@@ -68,6 +72,15 @@ function renderBadge(count) {
   return canvas.toDataURL("image/png");
 }
 
+// Runs in the page's world, before Outlook's scripts. Neither the
+// disable-blink-features switch nor webPreferences.disableBlinkFeatures
+// removes the Badging API in Electron 44, so it is deleted here.
+function removeBadgingApi() {
+  for (const name of ["setAppBadge", "clearAppBadge"]) {
+    delete Navigator.prototype[name];
+  }
+}
+
 class UnreadBadge {
   #ipcRenderer = null;
   #last = -1;
@@ -91,6 +104,11 @@ class UnreadBadge {
       characterData: true,
     });
     this.#check();
+  }
+
+  /** @param {Electron.ContextBridge} contextBridge */
+  blockPageBadge(contextBridge) {
+    contextBridge.executeInMainWorld({ func: removeBadgingApi });
   }
 
   #schedule() {
@@ -122,4 +140,4 @@ class UnreadBadge {
 }
 
 module.exports = new UnreadBadge();
-module.exports._internals = { readInboxUnread, badgeLabel, INBOX_SELECTOR };
+module.exports._internals = { readInboxUnread, badgeLabel, removeBadgingApi, INBOX_SELECTOR };
