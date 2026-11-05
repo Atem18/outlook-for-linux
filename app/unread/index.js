@@ -14,7 +14,7 @@ const POLL_INTERVAL_MS = 30_000;
 const API_FRESH_MS = 2 * POLL_INTERVAL_MS;
 
 /**
- * The Inbox unread count for the tray, from two sources:
+ * The Inbox unread count for the dock badge and the tray, from two sources:
  *
  * 1. Outlook's own API: like teams-for-linux's graphApi, which borrows the
  *    Graph token the Teams web app already holds, this borrows the bearer
@@ -42,7 +42,8 @@ class UnreadService {
 
   /**
    * @param {() => Electron.BrowserWindow | null} getWindow
-   * @param {import("../tray")} tray
+   * @param {import("../tray")|null} tray - null without a tray icon: the
+   *   count then only goes to the dock badge
    */
   constructor(getWindow, tray) {
     this.#getWindow = getWindow;
@@ -158,7 +159,7 @@ class UnreadService {
       return;
     }
     const window = this.#getWindow();
-    if (window && !window.isDestroyed()) {
+    if (this.#tray && window && !window.isDestroyed()) {
       window.webContents.send("unread-render", count);
     }
   }

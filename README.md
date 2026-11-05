@@ -36,7 +36,7 @@ Options come from, in increasing precedence:
 | `minimized` | `false` | Start minimized. |
 | `titleBar` | `integrated` | `integrated` hides the desktop title bar and draws the window buttons over the Outlook top bar (client-side decorations); `system` keeps the desktop's title bar. |
 | `appIcon` | `""` | PNG used instead of the bundled icon (windows, tray, notifications). See [App icon](#app-icon). |
-| `trayIcon` | `true` | Tray icon with the unread count. |
+| `trayIcon` | `true` | Tray icon with the unread count (the taskbar/dock badge shows it either way). |
 | `closeToTray` | `true` | Closing the window hides it to the tray, so notifications and reminders keep arriving. |
 | `notifications` | `true` | Show Outlook's notifications as native desktop notifications. |
 | `defaultMailClient` | `false` | Make the app the default mail client at startup (`mailto:` links open a compose window). |
