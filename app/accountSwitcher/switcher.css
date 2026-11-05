@@ -1,0 +1,250 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* The view is transparent; only the button and, while open, the scrim and
+   the list paint, so Outlook shows through everywhere else. */
+html,
+body {
+  height: 100%;
+  background: transparent;
+  font-family: "Segoe UI", system-ui, -apple-system, Ubuntu, Cantarell, sans-serif;
+  color: #242424;
+  overflow: hidden;
+  user-select: none;
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #0f6cbd;
+  color: #fff;
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+
+/* At rest: a 32px avatar centred in the 48px corner of Outlook's left app
+   bar, below its app icons. */
+.pill {
+  position: fixed;
+  left: 8px;
+  bottom: 8px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  z-index: 2;
+}
+
+.pill .avatar {
+  width: 32px;
+  height: 32px;
+  font-size: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+}
+
+.pill:hover .avatar {
+  filter: brightness(1.12);
+}
+
+.pill:focus-visible,
+.account-row:focus-visible,
+.link:focus-visible {
+  outline: 2px solid #0f6cbd;
+  outline-offset: 2px;
+}
+
+/* Unread mail in another account. */
+.unread-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #c4314b;
+  border: 2px solid #fff;
+  pointer-events: none;
+}
+
+.unread-dot[hidden],
+.scrim[hidden],
+.dropdown[hidden] {
+  display: none;
+}
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.12);
+  z-index: 1;
+}
+
+.dropdown {
+  position: fixed;
+  left: 8px;
+  bottom: 48px;
+  width: 280px;
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #d1d1d1;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  z-index: 3;
+}
+
+.account-list {
+  list-style: none;
+  padding: 4px 0;
+}
+
+.account-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+.account-row .avatar {
+  width: 28px;
+  height: 28px;
+  font-size: 11px;
+}
+
+.account-row:hover {
+  background: #f0f0f0;
+}
+
+.account-row.active {
+  background: #ebf3fc;
+  font-weight: 600;
+}
+
+.account-row .name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unread-badge {
+  flex: 0 0 auto;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #c4314b;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+}
+
+.shortcut-hint {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 400;
+  color: #707070;
+  white-space: nowrap;
+}
+
+.dropdown-footer {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid #e0e0e0;
+  padding: 4px;
+}
+
+.link {
+  width: 100%;
+  padding: 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #0f6cbd;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+.link:hover:not(:disabled) {
+  background: #f0f0f0;
+}
+
+.link.danger {
+  color: #c4314b;
+}
+
+.link:disabled {
+  color: #a0a0a0;
+  cursor: default;
+}
+
+@media (prefers-color-scheme: dark) {
+  html,
+  body {
+    color: #e0e0e0;
+  }
+
+  .scrim {
+    background: rgba(0, 0, 0, 0.35);
+  }
+
+  .dropdown {
+    background: #292929;
+    border-color: #444;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  }
+
+  .account-row:hover,
+  .link:hover:not(:disabled) {
+    background: #3a3a3a;
+  }
+
+  .account-row.active {
+    background: #1f3550;
+  }
+
+  .shortcut-hint {
+    color: #a0a0a0;
+  }
+
+  .unread-dot {
+    border-color: #292929;
+  }
+
+  .dropdown-footer {
+    border-top-color: #444;
+  }
+
+  .link {
+    color: #6cb8f6;
+  }
+
+  .link.danger {
+    color: #f1707b;
+  }
+
+  .link:disabled {
+    color: #6e6e6e;
+  }
+}

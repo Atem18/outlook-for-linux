@@ -15,7 +15,7 @@ class ConnectionMonitor {
   #errorPagePending = false;
 
   /**
-   * @param {Electron.WebContents} webContents - the main window's
+   * @param {Electron.WebContents} webContents - an account's Outlook page
    * @param {string} userAgent
    */
   constructor(webContents, userAgent) {
@@ -42,10 +42,15 @@ class ConnectionMonitor {
       }
       this.#reset();
     });
-    powerMonitor.on("resume", () => {
+    const onResume = () => {
       if (this.#failedUrl) this.#schedule(0);
+    };
+    powerMonitor.on("resume", onResume);
+    // An account's page goes away when the account is removed.
+    this.#webContents.once("destroyed", () => {
+      clearTimeout(this.#timer);
+      powerMonitor.removeListener("resume", onResume);
     });
-    this.#webContents.once("destroyed", () => clearTimeout(this.#timer));
   }
 
   #schedule(delay) {

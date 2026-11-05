@@ -39,6 +39,7 @@ Options come from, in increasing precedence:
 | `trayIcon` | `true` | Tray icon with the unread count (the taskbar/dock badge shows it either way). |
 | `closeToTray` | `true` | Closing the window hides it to the tray, so notifications and reminders keep arriving. |
 | `notifications` | `true` | Show Outlook's notifications as native desktop notifications. |
+| `multiAccount` | `false` | Several accounts side by side in one window. See [Accounts](#accounts). |
 | `defaultMailClient` | `false` | Make the app the default mail client at startup (`mailto:` links open a compose window). |
 | `customCSSLocation` | `""` | CSS file injected into Outlook's pages. |
 | `globalShortcuts` | `[]` | Shortcuts forwarded to Outlook while the app is not focused, e.g. `["Control+Shift+M"]`. On Wayland, start with `--enable-features=GlobalShortcutsPortal`. |
@@ -60,8 +61,26 @@ same URL: Microsoft's sign-in page detects the account type and sends you to
 the right mailbox. The app then remembers which mailbox you use and opens it
 directly on the next launch.
 
-To keep two accounts signed in at once, run a second instance with its own
-data directory, as teams-for-linux does:
+To keep several accounts signed in at once (say work and personal), turn on
+`multiAccount` in `config.json` (or start with `--multiAccount`):
+
+```json
+{ "multiAccount": true }
+```
+
+The account you are signed in to becomes the first one. A button in the
+bottom-left corner of the window switches accounts and adds, renames or
+removes them; the same is in the **Accounts** menu (also in the tray menu),
+and `Ctrl+Alt+1` to `Ctrl+Alt+9` switch directly. Each account has its own
+session, so signing in or out of one leaves the others alone, and every
+account keeps running in the background: notifications (which name their
+account) and reminders arrive from all of them, and the tray and taskbar
+badge count the unread mail of all of them. Removing an account deletes its
+data from the app (not from the mailbox). Not available together with
+`intune`.
+
+The older way still works: a second instance with its own data directory,
+config and tray icon, as teams-for-linux does:
 
 ```bash
 outlook-for-linux --user-data-dir="$HOME/.config/outlook-for-linux-personal"
@@ -136,7 +155,7 @@ Copy `dist/outlook-for-linux_<version>_amd64.deb` to the target machine and
 install it with apt, which also installs the libraries it needs:
 
 ```bash
-sudo apt install ./outlook-for-linux_2.1.0_amd64.deb
+sudo apt install ./outlook-for-linux_2.2.0_amd64.deb
 ```
 
 Outlook for Linux is then in the applications menu, or run

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self';">
+  <title>Accounts</title>
+  <link rel="stylesheet" href="switcher.css">
+</head>
+<body>
+  <div id="scrim" class="scrim" hidden></div>
+
+  <!-- Opens upward from the button. -->
+  <div id="dropdown" class="dropdown" role="menu" hidden>
+    <ul id="account-list" class="account-list"></ul>
+    <div class="dropdown-footer">
+      <button id="add" class="link" type="button">Add account…</button>
+      <button id="rename" class="link" type="button">Rename this account…</button>
+      <button id="remove" class="link danger" type="button">Remove this account…</button>
+    </div>
+  </div>
+
+  <!-- At rest: the visible account's avatar in the bottom-left corner. -->
+  <button id="pill" class="pill" type="button" aria-haspopup="menu" aria-expanded="false" title="Switch account">
+    <span id="pill-avatar" class="avatar" aria-hidden="true"></span>
+    <span id="pill-unread" class="unread-dot" aria-hidden="true" hidden></span>
+  </button>
+
+  <script src="switcher.js"></script>
+</body>
+</html>

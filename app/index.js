@@ -75,7 +75,8 @@ if (app.requestSingleInstanceLock()) {
     if (config.clientCertPinDialog) clientCertificate.initialize();
     clientCertificate.importPkcs12(config.clientCertPath, config.clientCertPassword);
     mainAppWindow.onAppReady(config, appConfig.settingsStore);
-    require("./globalShortcuts").register(config, () => mainAppWindow.window, app);
+    // Global shortcuts go to the visible account's page.
+    require("./globalShortcuts").register(config, mainAppWindow.activeContents, app);
     if (process.platform === "linux" && config.webauthn) {
       require("./webauthn")
         .initialize(mainAppWindow.window, config)

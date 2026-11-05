@@ -3,8 +3,9 @@
 /**
  * Shared hardened secret-input prompt window, ported from teams-for-linux
  * app/_shared/securePrompt.js (see its ADR 024, smartcard PKCS#11 PIN dialog).
- * Used by the smartcard PIN dialog (app/clientCertificate) and the WebAuthn
- * PIN prompt (app/webauthn).
+ * Used by the smartcard PIN dialog (app/clientCertificate), the WebAuthn
+ * PIN prompt (app/webauthn), and, as a plain text prompt, for account names
+ * (app/accounts).
  *
  * Security properties (must not regress):
  * - contextIsolation: true, sandbox: true, nodeIntegration: false
@@ -67,9 +68,24 @@ function ensureHandlers() {
  * @param {string} [opts.submitLabel] - submit button label (default "OK")
  * @param {string} [opts.cancelLabel] - cancel button label (default "Cancel")
  * @param {BrowserWindow|null} [opts.parent] - parent window; null for standalone
+ * @param {"password"|"text"} [opts.inputType] - "text" for a value that is not
+ *   secret (default "password")
+ * @param {string} [opts.placeholder] - placeholder of the field (default "PIN")
+ * @param {string} [opts.value] - initial value; only for text prompts
  * @returns {Promise<string>} resolves with the entered secret, rejects on cancel/close
  */
-function showSecurePrompt({ title, heading, message, warning, submitLabel, cancelLabel, parent = null }) {
+function showSecurePrompt({
+  title,
+  heading,
+  message,
+  warning,
+  submitLabel,
+  cancelLabel,
+  parent = null,
+  inputType = "password",
+  placeholder = "PIN",
+  value = "",
+}) {
   ensureHandlers();
 
   return new Promise((resolve, reject) => {
@@ -118,6 +134,10 @@ function showSecurePrompt({ title, heading, message, warning, submitLabel, cance
           warning: warning ?? "",
           submitLabel: submitLabel ?? "OK",
           cancelLabel: cancelLabel ?? "Cancel",
+          inputType: inputType === "text" ? "text" : "password",
+          placeholder,
+          // A secret is never passed in; only a text prompt is pre-filled.
+          value: inputType === "text" ? value : "",
         },
       })
       .catch((error) => {

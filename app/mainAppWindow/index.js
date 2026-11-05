@@ -6,13 +6,15 @@ const { mailboxOrigin, startUrl, isSignedOutPage } = require("./startUrl");
 const { PROTOCOL_SCHEMES, parseMailto, findMailtoArg, composeUrl } = require("./mailtoLink");
 const configOptions = require("../config/options");
 const AppTray = require("../tray");
-const UnreadService = require("../unread");
+const { UnreadService, UnreadTotal } = require("../unread");
 const NotificationService = require("../notifications");
 const ConnectionMonitor = require("../connection");
 const DownloadFeedback = require("../downloads");
 const Zoom = require("../zoom");
 const CustomCSS = require("../customCSS");
 const AppIcon = require("../appIcon");
+const { AccountStore } = require("../accounts/store");
+const AccountViews = require("../accounts/views");
 const {
   isIntegratedTitleBar,
   titleBarWindowOptions,
@@ -30,6 +32,13 @@ let customCSS = null;
 let appIcon = null;
 let appConfig = null;
 let store = null;
+// Multiple accounts mode (config.multiAccount): the account list and the
+// views of the accounts other than the main window's own page.
+let accounts = null;
+let accountViews = null;
+let unreadTotal = null;
+let notifications = null;
+let downloads = null;
 // A mailto: link that arrived before the main window existed.
 let pendingMailto = null;
 // webContents of open mailto: compose windows. They load the preload for
@@ -57,10 +66,11 @@ function openExternal(url) {
   });
 }
 
-// Pop-outs (compose, reading pane) get no preload and keep the sandbox.
-function webPreferences(config) {
+// Pop-outs (compose, reading pane) get no preload and keep the sandbox. They
+// share the session of the account that opened them.
+function webPreferences(config, partition = config.partition) {
   return {
-    partition: config.partition,
+    partition,
     spellcheck: true,
     contextIsolation: true,
     nodeIntegration: false,
@@ -77,15 +87,37 @@ function webPreferences(config) {
 // sandbox stays on: Chromium may start Outlook in a renderer process it
 // created for Outlook's service worker, which is sandboxed whatever the
 // window asks for, so the preload has to work sandboxed anyway.
-function mainWebPreferences(config) {
+function mainWebPreferences(config, partition = config.partition) {
   return {
-    ...webPreferences(config),
+    ...webPreferences(config, partition),
     preload: path.join(__dirname, "..", "browser", "preload.bundle.js"),
   };
 }
 
+// The visible account's Outlook page: the window's own page, or with
+// multiple accounts the view of the account on screen.
+function activeContents() {
+  if (accountViews) return accountViews.activeContents;
+  return window && !window.isDestroyed() ? window.webContents : null;
+}
+
+// An account's Outlook page: the window's own page or an account view (not
+// a pop-out or compose window).
+function isOutlookPage(contents) {
+  if (!window || window.isDestroyed()) return false;
+  if (contents === window.webContents) return true;
+  return Boolean(accountViews?.accountOf(contents));
+}
+
 function isMainWindowSender(event) {
-  return window && !window.isDestroyed() && event.sender === window.webContents;
+  return isOutlookPage(event.sender);
+}
+
+// The page a menu item acts on: the visible account's in the main window,
+// the window's own page in a pop-out.
+function contentsForWindow(win) {
+  if (!win || win === window) return activeContents();
+  return win.isDestroyed() ? null : win.webContents;
 }
 
 function isComposeSender(event) {
@@ -117,22 +149,38 @@ function registerIpcHandlers(config) {
   if (!isIntegratedTitleBar(config)) return;
   // Integrated title bar: match the window controls to the Outlook top bar's height and colour
   ipcMain.on("title-bar-overlay-update", async (event, payload) => {
-    if (!isMainWindowSender(event) && !isComposeSender(event)) return;
-    const target = BrowserWindow.fromWebContents(event.sender);
+    const outlookPage = isMainWindowSender(event);
+    if (!outlookPage && !isComposeSender(event)) return;
+    const contents = event.sender;
+    const target = outlookPage ? window : BrowserWindow.fromWebContents(contents);
     if (!target) return;
     const update = sanitizeOverlayUpdate(payload);
     if (!update) return;
     const { sample, ...overlay } = update;
     if (sample) {
-      Object.assign(overlay, await samplePageColors(target, update.height));
+      Object.assign(overlay, await samplePageColors(target, contents, update.height));
     }
-    if (target === window) refreshMainHeaderColor();
-    try {
-      if (!target.isDestroyed()) target.setTitleBarOverlay(overlay);
-    } catch (err) {
-      console.warn("[TITLE_BAR] Could not update the window controls", { error: err.message });
+    if (outlookPage) {
+      // Every account's page reports its bar; only the visible one's applies,
+      // and the others' are kept for when they are switched to.
+      overlays.set(contents, overlay);
+      if (contents !== activeContents()) return;
+      refreshMainHeaderColor();
     }
+    applyOverlay(target, overlay);
   });
+}
+
+// The last window-controls overlay each account's page asked for (weak: a
+// removed account's page drops out by itself).
+const overlays = new WeakMap();
+
+function applyOverlay(target, overlay) {
+  try {
+    if (!target.isDestroyed()) target.setTitleBarOverlay(overlay);
+  } catch (err) {
+    console.warn("[TITLE_BAR] Could not update the window controls", { error: err.message });
+  }
 }
 
 // The header colour for compose windows' title bar strips. Not the colour
@@ -143,10 +191,11 @@ function registerIpcHandlers(config) {
 // controls' colour mostly while still loading) and on those reports; open
 // compose windows follow changes, such as a theme switch.
 async function refreshMainHeaderColor() {
-  if (!window || window.isDestroyed()) return;
+  const contents = activeContents();
+  if (!window || window.isDestroyed() || !contents) return;
   try {
     const [contentWidth] = window.getContentSize();
-    const image = await window.webContents.capturePage({ x: 0, y: 1, width: contentWidth, height: 2 });
+    const image = await contents.capturePage({ x: 0, y: 1, width: contentWidth, height: 2 });
     if (image.isEmpty()) return;
     const colors = overlayColorsFromPixel(image.resize({ width: 1, height: 1, quality: "best" }).toBitmap());
     const color = colors?.color.slice(0, 7);
@@ -161,10 +210,10 @@ async function refreshMainHeaderColor() {
 // Averages the page behind the window controls down to one pixel. Returns {}
 // (keep the renderer's fallback colours) when there is nothing to sample yet,
 // e.g. before the window is first shown, when capturePage fails.
-async function samplePageColors(target, height) {
+async function samplePageColors(target, contents, height) {
   try {
     const [contentWidth] = target.getContentSize();
-    const image = await target.webContents.capturePage(sampleRect(contentWidth, height));
+    const image = await contents.capturePage(sampleRect(contentWidth, height));
     if (image.isEmpty()) return {};
     const pixel = image.resize({ width: 1, height: 1, quality: "best" }).toBitmap();
     return overlayColorsFromPixel(pixel) ?? {};
@@ -174,8 +223,10 @@ async function samplePageColors(target, height) {
 }
 
 // Applied to the main window and to every pop-out it opens, so links clicked
-// inside a pop-out follow the same rules.
-function applyLinkPolicy(webContents, config) {
+// inside a pop-out follow the same rules. Pop-outs stay on the session of the
+// account that opened them: Outlook writes into the about:blank windows it
+// opens, which only works within one session.
+function applyLinkPolicy(webContents, config, partition = config.partition) {
   webContents.setWindowOpenHandler(({ url }) => {
     const action = classifyWindowOpen(url);
     if (action === "child") {
@@ -185,7 +236,7 @@ function applyLinkPolicy(webContents, config) {
           parent: window,
           autoHideMenuBar: true,
           icon: appIcon.windowImage(),
-          webPreferences: webPreferences(config),
+          webPreferences: webPreferences(config, partition),
         },
       };
     }
@@ -195,7 +246,7 @@ function applyLinkPolicy(webContents, config) {
 
   webContents.on("did-create-window", (child) => {
     child.webContents.setUserAgent(config.chromeUserAgent);
-    applyLinkPolicy(child.webContents, config);
+    applyLinkPolicy(child.webContents, config, partition);
     attachPageFeatures(child.webContents);
   });
 
@@ -214,10 +265,9 @@ function attachPageFeatures(webContents) {
   customCSS?.attach(webContents);
 }
 
-function configureSpellChecker(config) {
+function configureSpellChecker(config, ses) {
   const languages = config.spellCheckerLanguages;
   if (!Array.isArray(languages) || languages.length === 0) return;
-  const ses = session.fromPartition(config.partition);
   const available = new Set(ses.availableSpellCheckerLanguages);
   const valid = languages.filter((lang) => available.has(lang));
   if (valid.length !== languages.length) {
@@ -235,18 +285,34 @@ const MAILBOX_ORIGIN_KEY = "lastMailboxOrigin";
 const SIGN_OUT_RELOAD_INTERVAL_MS = 10_000;
 const MAILBOX_SETTLE_MS = 5_000;
 
+// Where the main account's remembered mailbox is kept.
+function mainMailboxMemory(settingsStore) {
+  return {
+    get: () => settingsStore.get(MAILBOX_ORIGIN_KEY),
+    set: (origin) => settingsStore.set(MAILBOX_ORIGIN_KEY, origin),
+    forget: () => settingsStore.delete(MAILBOX_ORIGIN_KEY),
+  };
+}
+
+// Where an added account's remembered mailbox is kept.
+function accountMailboxMemory(id) {
+  return {
+    get: () => accounts.get(id)?.mailboxOrigin,
+    set: (origin) => accounts.get(id) && accounts.setMailboxOrigin(id, origin),
+    forget: () => accounts.get(id) && accounts.setMailboxOrigin(id, null),
+  };
+}
+
 // Remembers which Outlook the user ends up in (personal or work) so the next
 // launch opens it directly; see app/mainAppWindow/startUrl.js. On a signed-out
 // dead end (after signing out, or a remembered mailbox whose session expired)
 // it forgets the mailbox and goes back to sign-in, so the next sign-in can be
-// either account type.
-function trackMailbox(webContents, config, settingsStore) {
+// either account type. One per account.
+function trackMailbox(webContents, config, memory) {
   const remember = () => {
     if (webContents.isDestroyed()) return;
     const origin = mailboxOrigin(webContents.getURL());
-    if (origin && settingsStore.get(MAILBOX_ORIGIN_KEY) !== origin) {
-      settingsStore.set(MAILBOX_ORIGIN_KEY, origin);
-    }
+    if (origin && memory.get() !== origin) memory.set(origin);
   };
   // Landing on a mailbox URL proves nothing: signed out, .../mail/ loads and
   // then redirects to sign-in or to the marketing site. Only a page still on
@@ -267,7 +333,7 @@ function trackMailbox(webContents, config, settingsStore) {
   let lastReload = 0;
   webContents.on("did-finish-load", () => {
     if (!isSignedOutPage(webContents.getURL())) return;
-    settingsStore.delete(MAILBOX_ORIGIN_KEY);
+    memory.forget();
     if (Date.now() - lastReload < SIGN_OUT_RELOAD_INTERVAL_MS) {
       console.warn("[AUTH] Signed-out page reached again right after reloading; staying put");
       return;
@@ -300,16 +366,19 @@ function createWindow(config, settingsStore) {
   });
   windowState.manage(window);
   registerIpcHandlers(config);
+  if (multiAccountEnabled(config)) accounts = new AccountStore(settingsStore, config.partition);
 
-  if (config.trayIcon) {
-    tray = new AppTray(window, appIcon.path, quit);
-    buildMenu();
-  }
-  // The dock badge: Electron sends app.setBadgeCount over Unity
-  // LauncherEntry, which GNOME's docks and KDE's task manager show.
-  const unread = new UnreadService(() => window, tray);
-  unread.attach(session.fromPartition(config.partition));
-  const notifications = config.notifications ? new NotificationService(() => window, appIcon.path) : null;
+  if (config.trayIcon) tray = new AppTray(window, appIcon.path, quit);
+  // The dock badge and the tray show every account's unread mail; the
+  // switcher shows each account's.
+  unreadTotal = new UnreadTotal(
+    tray,
+    () => (window && !window.isDestroyed() ? window.webContents : null),
+    (counts) => accountViews?.setUnread(counts)
+  );
+  notifications = config.notifications
+    ? new NotificationService(() => window, appIcon.path, { isOutlookPage, accountOf: notificationAccount })
+    : null;
   notifications?.initialize();
 
   window.once("ready-to-show", () => {
@@ -329,9 +398,7 @@ function createWindow(config, settingsStore) {
     window.hide();
   });
 
-  new ConnectionMonitor(window.webContents, config.chromeUserAgent).initialize();
-  const downloads = new DownloadFeedback(window, appIcon.path);
-  downloads.attach(session.fromPartition(config.partition));
+  downloads = new DownloadFeedback(window, appIcon.path);
   // Window icons follow in AppIcon itself; the menu's checkbox states too.
   appIcon.onChange((iconPath) => {
     tray?.setBaseIconPath(iconPath);
@@ -340,18 +407,102 @@ function createWindow(config, settingsStore) {
     buildMenu();
   });
 
-  // A new page (reload, sign-out) has no unread count until Outlook reports one.
-  window.webContents.on("did-navigate", () => unread.reset());
-
-  configureSpellChecker(config);
-  zoom = new Zoom(() => window, settingsStore);
+  zoom = new Zoom(activeContents, settingsStore);
   customCSS = new CustomCSS(config.customCSSLocation);
-  attachPageFeatures(window.webContents);
-  applyLinkPolicy(window.webContents, config);
-  const url = startUrl(config.url, configOptions.url.default, settingsStore.get(MAILBOX_ORIGIN_KEY));
-  trackMailbox(window.webContents, config, settingsStore);
+  const url = setupOutlookPage(window.webContents, config, {
+    id: MAIN_ACCOUNT,
+    partition: config.partition,
+    memory: mainMailboxMemory(settingsStore),
+  });
   window.loadURL(url, { userAgent: config.chromeUserAgent });
+
+  if (accounts) {
+    accountViews = new AccountViews(window, accounts, {
+      webPreferences: (partition) => mainWebPreferences(config, partition),
+      userAgent: config.chromeUserAgent,
+      setupPage: (contents, account) =>
+        setupOutlookPage(contents, config, {
+          id: account.id,
+          partition: account.partition,
+          memory: accountMailboxMemory(account.id),
+        }),
+      onRemoved: (account) => unreadTotal.delete(account.id),
+      onSwitched: () => {
+        // The window controls take the visible account's top bar colour.
+        const overlay = overlays.get(activeContents());
+        if (overlay) applyOverlay(window, overlay);
+        if (isIntegratedTitleBar(config)) refreshMainHeaderColor();
+        buildMenu();
+      },
+    });
+    accountViews.initialize();
+    console.info("[ACCOUNTS] Multiple accounts on", { count: accounts.list().length });
+  }
+  buildMenu();
   return window;
+}
+
+const MAIN_ACCOUNT = "main";
+
+// Multiple accounts, unless Intune is on: the broker signs in one account per
+// machine, and its SSO cookie would go to every account's sign-in (as in
+// teams-for-linux, the two are exclusive).
+function multiAccountEnabled(config) {
+  if (!config.multiAccount) return false;
+  if (config.intune) {
+    console.warn("[ACCOUNTS] multiAccount is ignored while intune is on");
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Makes a page an account's Outlook page: user agent, link policy, zoom and
+ * custom CSS, remembered mailbox and sign-out handling, reload when the
+ * network was down, unread count, and, for an added account's session,
+ * downloads, spell checking and security keys.
+ * @param {Electron.WebContents} contents
+ * @param {object} config
+ * @param {{id: string, partition: string, memory: {get: Function, set: Function, forget: Function}}} account
+ * @returns {string} the URL to load
+ */
+function setupOutlookPage(contents, config, { id, partition, memory }) {
+  const ses = session.fromPartition(partition);
+  contents.setUserAgent(config.chromeUserAgent);
+  attachPageFeatures(contents);
+  applyLinkPolicy(contents, config, partition);
+  trackMailbox(contents, config, memory);
+  new ConnectionMonitor(contents, config.chromeUserAgent).initialize();
+  downloads.attach(ses);
+  configureSpellChecker(config, ses);
+  if (id !== MAIN_ACCOUNT && process.platform === "linux" && config.webauthn) {
+    // The main window's page is covered by initialize() in app/index.js.
+    require("../webauthn").attachWebContents(contents);
+  }
+
+  const unread = new UnreadService(
+    () => (contents.isDestroyed() ? null : contents),
+    (count) => {
+      // A removed account's page can still report while it closes.
+      if (id === MAIN_ACCOUNT || accounts?.get(id)) unreadTotal.set(id, count);
+    }
+  );
+  unread.attach(ses);
+  // A new page (reload, sign-out) has no unread count until Outlook reports one.
+  contents.on("did-navigate", () => unread.reset());
+  contents.once("destroyed", () => unread.destroy());
+
+  return startUrl(config.url, configOptions.url.default, memory.get());
+}
+
+// For a notification: the account it came from, when there are several.
+function notificationAccount(contents) {
+  const account = accountViews?.accountOf(contents);
+  if (!account) return null;
+  return {
+    name: accounts.list().length > 1 ? account.name : null,
+    show: () => accountViews.switch(account.id),
+  };
 }
 
 function buildMenu() {
@@ -361,27 +512,68 @@ function buildMenu() {
     {
       label: "View",
       submenu: [
-        { role: "reload" },
-        { role: "forceReload" },
-        { role: "toggleDevTools" },
+        // Not the roles: those act on the window's own page, which is not
+        // the visible one when another account is shown.
+        { label: "Reload", accelerator: "CmdOrCtrl+R", click: (_item, win) => contentsForWindow(win)?.reload() },
+        {
+          label: "Force Reload",
+          accelerator: "Shift+CmdOrCtrl+R",
+          click: (_item, win) => contentsForWindow(win)?.reloadIgnoringCache(),
+        },
+        {
+          label: "Toggle Developer Tools",
+          accelerator: "Ctrl+Shift+I",
+          click: (_item, win) => contentsForWindow(win)?.toggleDevTools(),
+        },
         { type: "separator" },
         // Not the zoom roles: these save the zoom for the next launch. The
         // keys are handled by app/zoom (before the page sees them), so the
         // accelerators here are labels only.
-        { label: "Actual Size", accelerator: "CmdOrCtrl+0", registerAccelerator: false, click: (_item, win) => zoom?.step(0, win) },
-        { label: "Zoom In", accelerator: "CmdOrCtrl+Plus", registerAccelerator: false, click: (_item, win) => zoom?.step(1, win) },
-        { label: "Zoom Out", accelerator: "CmdOrCtrl+-", registerAccelerator: false, click: (_item, win) => zoom?.step(-1, win) },
+        { label: "Actual Size", accelerator: "CmdOrCtrl+0", registerAccelerator: false, click: (_item, win) => zoom?.step(0, contentsForWindow(win)) },
+        { label: "Zoom In", accelerator: "CmdOrCtrl+Plus", registerAccelerator: false, click: (_item, win) => zoom?.step(1, contentsForWindow(win)) },
+        { label: "Zoom Out", accelerator: "CmdOrCtrl+-", registerAccelerator: false, click: (_item, win) => zoom?.step(-1, contentsForWindow(win)) },
         { type: "separator" },
         { role: "togglefullscreen" },
         { type: "separator" },
         appIcon.menuItem(() => window),
       ],
     },
+    ...(accountViews ? [accountsMenu()] : []),
     { role: "windowMenu" },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
   // Reachable from the tray too: the integrated title bar has no menu bar.
-  tray?.setMenuItems([appIcon.menuItem(() => window)]);
+  tray?.setMenuItems([appIcon.menuItem(() => window), ...(accountViews ? [accountsMenu()] : [])]);
+}
+
+// Accounts menu, in the menu bar and the tray. Ctrl+Alt+<n> is handled by
+// app/accounts/views.js before the page sees the keys; here it is a label.
+function accountsMenu() {
+  const active = accounts.getActive();
+  const run = (action) => () => {
+    show();
+    action().catch((err) => console.error("[ACCOUNTS] Account action failed", { error: err.message }));
+  };
+  return {
+    label: "Accounts",
+    submenu: [
+      ...accounts.list().map((account, index) => ({
+        label: account.name.replaceAll("&", "&&"),
+        type: "radio",
+        checked: account.id === active.id,
+        accelerator: `Ctrl+Alt+${index + 1}`,
+        registerAccelerator: false,
+        click: () => {
+          show();
+          accountViews.switch(account.id);
+        },
+      })),
+      { type: "separator" },
+      { label: "Add Account…", click: run(() => accountViews.add()) },
+      { label: "Rename This Account…", click: run(() => accountViews.renameActive()) },
+      { label: "Remove This Account…", enabled: !active.main, click: run(() => accountViews.removeActive()) },
+    ],
+  };
 }
 
 function quit() {
@@ -413,9 +605,16 @@ function registerMailClient(config) {
 // The mailbox the compose window should open on: the one on screen, else the
 // remembered one, else wherever the app starts (sign-in for a new profile).
 function composeOrigin() {
-  const current = window && !window.isDestroyed() ? mailboxOrigin(window.webContents.getURL()) : null;
+  const contents = activeContents();
+  const current = contents ? mailboxOrigin(contents.getURL()) : null;
   if (current) return current;
-  return new URL(startUrl(appConfig.url, configOptions.url.default, store.get(MAILBOX_ORIGIN_KEY))).origin;
+  const remembered = accounts && !accounts.getActive().main ? accounts.getActive().mailboxOrigin : store.get(MAILBOX_ORIGIN_KEY);
+  return new URL(startUrl(appConfig.url, configOptions.url.default, remembered)).origin;
+}
+
+// The visible account's session, which a compose window must share.
+function activePartition() {
+  return accounts?.getActive().partition ?? appConfig.partition;
 }
 
 // Opens Outlook's compose deeplink in a pop-out, as Outlook's own "open in
@@ -438,12 +637,12 @@ async function openCompose(mailto) {
     icon: appIcon.windowImage(),
     autoHideMenuBar: true,
     ...titleBarWindowOptions(appConfig, nativeTheme.shouldUseDarkColors),
-    webPreferences: mainWebPreferences(appConfig),
+    webPreferences: mainWebPreferences(appConfig, activePartition()),
   });
   const contents = compose.webContents;
   composeContents.add(contents);
   contents.once("destroyed", () => composeContents.delete(contents));
-  applyLinkPolicy(contents, appConfig);
+  applyLinkPolicy(contents, appConfig, activePartition());
   attachPageFeatures(contents);
   contents.loadURL(composeUrl(fields, composeOrigin()), { userAgent: appConfig.chromeUserAgent })
     .catch(() => console.warn("[MAILTO] Compose window failed to load"));
@@ -496,6 +695,7 @@ module.exports = {
   onAppReady,
   show,
   handleLaunchArgs,
+  activeContents,
   get window() {
     return window;
   },
