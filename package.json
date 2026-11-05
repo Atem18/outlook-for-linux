@@ -1,6 +1,6 @@
 {
   "name": "outlook-for-linux",
-  "version": "2.1.1",
+  "version": "2.2.0",
   "main": "app/index.js",
   "desktopName": "outlook-for-linux.desktop",
   "description": "Unofficial client for Microsoft Outlook for Linux",
