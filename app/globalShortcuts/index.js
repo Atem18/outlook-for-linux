@@ -47,20 +47,20 @@ function parseAccelerator(accelerator) {
 }
 
 /**
- * @param {BrowserWindow} window - The window to send the event to
+ * @param {Electron.WebContents} contents - The page to send the event to
  * @param {string} accelerator - The accelerator string (e.g., "Control+Shift+M")
  */
-function sendKeyboardEventToWindow(window, accelerator) {
+function sendKeyboardEvent(contents, accelerator) {
   try {
     const parsed = parseAccelerator(accelerator);
 
-    window.webContents.sendInputEvent({
+    contents.sendInputEvent({
       type: "keyDown",
       keyCode: parsed.key,
       modifiers: parsed.modifiers
     });
 
-    window.webContents.sendInputEvent({
+    contents.sendInputEvent({
       type: "keyUp",
       keyCode: parsed.key,
       modifiers: parsed.modifiers
@@ -76,10 +76,11 @@ function sendKeyboardEventToWindow(window, accelerator) {
 
 /**
  * @param {{globalShortcuts?: string[]}} config
- * @param {() => Electron.BrowserWindow|null} getWindow
+ * @param {() => Electron.WebContents|null} getContents - the visible
+ *   account's Outlook page
  * @param {Electron.App} app
  */
-function register(config, getWindow, app) {
+function register(config, getContents, app) {
   // Guard against multiple registrations
   if (isRegistered) {
     console.debug("[GLOBAL_SHORTCUTS] Already registered, skipping");
@@ -105,11 +106,11 @@ function register(config, getWindow, app) {
       const registered = globalShortcut.register(shortcut, () => {
         console.debug(`[GLOBAL_SHORTCUTS] Shortcut triggered: ${shortcut}`);
 
-        const window = getWindow();
-        if (window && !window.isDestroyed()) {
+        const contents = getContents();
+        if (contents && !contents.isDestroyed()) {
           // Forward the keyboard event to Outlook by simulating the key
           // press; Outlook handles it with its built-in keyboard shortcuts.
-          sendKeyboardEventToWindow(window, shortcut);
+          sendKeyboardEvent(contents, shortcut);
         } else {
           console.warn(`[GLOBAL_SHORTCUTS] Main window not available for shortcut: ${shortcut}`);
         }
@@ -139,4 +140,4 @@ function register(config, getWindow, app) {
   }
 }
 
-module.exports = { register, sendKeyboardEventToWindow, parseAccelerator };
+module.exports = { register, sendKeyboardEvent, parseAccelerator };

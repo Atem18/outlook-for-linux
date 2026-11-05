@@ -1,5 +1,6 @@
-// Preload for the main Outlook window, also loaded by the mailto: compose
-// window for its title bar (it gets no notifications or unread count). Runs sandboxed in an isolated world
+// Preload for every account's Outlook page (the main window's, and the
+// account views of multiAccount), also loaded by the mailto: compose window
+// for its title bar (it gets no notifications or unread count). Runs sandboxed in an isolated world
 // (contextIsolation): it shares Outlook's DOM but not its JavaScript globals.
 // Only what tools explicitly pass through contextBridge reaches the page.
 //

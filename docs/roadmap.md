@@ -102,11 +102,25 @@ Chat, stickers) are not. When porting, read the teams-for-linux module first
     `xdg-email`; attachments wait for "send to mail recipient" in Phase 3)
 - Calendar reminders while hidden (`backgroundThrottling` is already off;
   verify that reminders fire from the tray): still to verify by hand
-- Multiple accounts in isolated partitions (port `profilesManager`,
-  `profileSwitcher`), e.g. work and personal side by side. When porting, also
-  apply only the visible account's title-bar overlay (teams-for-linux
-  `4a1605a1`) and keep one unread count per account. Until then, a second
-  instance with `--user-data-dir` (README) runs a second account
+- Multiple accounts (done, opt-in `multiAccount`), ported from
+  teams-for-linux's `profilesManager`, `profileViewManager` and
+  `profileSwitcher` (its ADR-020), reduced to what Outlook needs
+  (`app/accounts`, `app/accountSwitcher`). The current session is the first
+  account, on the window's own page; each added account is a
+  `WebContentsView` on `persist:outlook-account-<uuid>`, kept attached and
+  loaded (switching shows and hides, nothing reloads). Per account: pop-outs
+  and compose windows on its session, remembered mailbox, sign-out handling,
+  reload when offline, downloads, spell checker, security keys, unread count.
+  The dock badge and tray show the total, the switcher each account's;
+  notifications name their account and a click shows it. Only the visible
+  account's title-bar overlay applies (teams-for-linux `4a1605a1`). Switcher
+  in the bottom-left corner, Accounts menu (and tray menu), Ctrl+Alt+1…9.
+  Exclusive with `intune`. Checked with Playwright (add, rename, remove with
+  data cleared, restart, session isolation, pop-out sessions); still to verify
+  by hand, signed in: whether the switcher covers anything in Outlook's left
+  app bar, dragging the window by an added account's top bar (draggable
+  regions in a `WebContentsView`) with the integrated title bar, and
+  notifications and unread counts from a background account
 - Intune SSO (done, `intune`, `intuneUser`): the Microsoft Identity Broker's
   PRT SSO cookie on login.microsoftonline.com requests, over D-Bus. The
   session's one `onBeforeSendHeaders` listener is now shared through
