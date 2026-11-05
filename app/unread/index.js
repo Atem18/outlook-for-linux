@@ -6,12 +6,18 @@ const {
   getFolderUrl,
   getFolderBody,
   parseUnreadCount,
+  isGetFolder,
+  latestCount,
 } = require("./outlookApi");
 const { sanitizeUnreadUpdate, unreadTotal } = require("../tray/badge");
 
 const POLL_INTERVAL_MS = 30_000;
 // An API count older than this no longer beats the folder pane's.
 const API_FRESH_MS = 2 * POLL_INTERVAL_MS;
+// Outlook calls its API when mail is read, moved or deleted; the count is
+// asked again this long after such a call, and at most this often.
+const NUDGE_DELAY_MS = 1500;
+const NUDGE_MIN_GAP_MS = 5000;
 
 /**
  * The Inbox unread count of one account, from two sources:
@@ -36,6 +42,9 @@ class UnreadService {
   #apiCount = null;
   #apiAt = 0;
   #domCount = null;
+  #domAt = 0;
+  #lastPollAt = 0;
+  #nudgeTimer = null;
   #shown = -1;
   #timer = null;
   #inFlight = false;
@@ -68,7 +77,9 @@ class UnreadService {
     this.#domListener = (event, count) => {
       if (!this.#isFromOwnPage(event) || !Number.isInteger(count) || count < 0) return;
       this.#domCount = count;
+      this.#domAt = Date.now();
       this.#update();
+      this.#nudge();
     };
     ipcMain.on("unread-dom-count", this.#domListener);
 
@@ -81,6 +92,7 @@ class UnreadService {
     this.#apiCount = null;
     this.#apiAt = 0;
     this.#domCount = null;
+    this.#domAt = 0;
     this.#show(0);
   }
 
@@ -88,6 +100,7 @@ class UnreadService {
     this.#destroyed = true;
     this.#token = null;
     clearInterval(this.#timer);
+    clearTimeout(this.#nudgeTimer);
     if (this.#domListener) ipcMain.removeListener("unread-dom-count", this.#domListener);
   }
 
@@ -104,12 +117,25 @@ class UnreadService {
     const first = !this.#token;
     this.#token = { origin, authorization };
     if (first) setTimeout(() => this.#poll(), 0);
+    else if (!isGetFolder(details.url)) this.#nudge();
+  }
+
+  // Ask again soon after Outlook changed something, instead of waiting for
+  // the next 30-second poll.
+  #nudge() {
+    if (this.#nudgeTimer || this.#destroyed) return;
+    const delay = Math.max(NUDGE_DELAY_MS, this.#lastPollAt + NUDGE_MIN_GAP_MS - Date.now());
+    this.#nudgeTimer = setTimeout(() => {
+      this.#nudgeTimer = null;
+      this.#poll();
+    }, delay);
   }
 
   async #poll() {
     const token = this.#token;
     if (!token || !this.#session || this.#inFlight) return;
     this.#inFlight = true;
+    this.#lastPollAt = Date.now();
     try {
       const response = await this.#session.fetch(getFolderUrl(token.origin), {
         method: "POST",
@@ -145,8 +171,12 @@ class UnreadService {
   }
 
   #update() {
-    const apiFresh = this.#apiCount !== null && Date.now() - this.#apiAt < API_FRESH_MS;
-    const count = apiFresh ? this.#apiCount : this.#domCount;
+    const count = latestCount(
+      { count: this.#apiCount, at: this.#apiAt },
+      { count: this.#domCount, at: this.#domAt },
+      Date.now(),
+      API_FRESH_MS
+    );
     if (count !== null) this.#show(count);
   }
 

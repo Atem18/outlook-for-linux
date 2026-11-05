@@ -174,3 +174,25 @@ describe("connection retry policy", () => {
     assert.equal(retryDelay(50), MAX_DELAY_MS);
   });
 });
+
+it("Outlook's page loses the Badging API, which overwrote the dock count", () => {
+  const { removeBadgingApi } = unreadBadgeTool._internals;
+  const saved = globalThis.Navigator;
+  class FakeNavigator {
+    setAppBadge() {}
+    clearAppBadge() {}
+    get language() {
+      return "en";
+    }
+  }
+  globalThis.Navigator = FakeNavigator;
+  try {
+    removeBadgingApi();
+    const nav = new FakeNavigator();
+    assert.equal("setAppBadge" in nav, false);
+    assert.equal("clearAppBadge" in nav, false);
+    assert.equal(nav.language, "en");
+  } finally {
+    globalThis.Navigator = saved;
+  }
+});

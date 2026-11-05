@@ -40,3 +40,27 @@ test("parses the unread count from a GetFolder response", () => {
   assert.equal(parseUnreadCount({ Body: { ResponseMessages: { Items: [{ ResponseClass: "Error" }] } } }), null);
   assert.equal(parseUnreadCount(null), null);
 });
+
+test("only Outlook's own changes ask for the count again, not GetFolder", () => {
+  const { isGetFolder } = require("../../app/unread/outlookApi");
+  assert.equal(isGetFolder("https://outlook.live.com/owa/service.svc?action=GetFolder&app=Mail"), true);
+  assert.equal(isGetFolder("https://outlook.live.com/owa/service.svc?action=getfolder"), true);
+  assert.equal(isGetFolder("https://outlook.live.com/owa/service.svc?action=UpdateItem&app=Mail"), false);
+  assert.equal(isGetFolder("https://outlook.live.com/owa/service.svc"), false);
+  assert.equal(isGetFolder("not a url"), false);
+});
+
+test("the newest of the API and folder-pane counts wins", () => {
+  const { latestCount } = require("../../app/unread/outlookApi");
+  const fresh = 60_000;
+  // Reading a message: the pane drops before the next poll.
+  assert.equal(latestCount({ count: 5, at: 1000 }, { count: 4, at: 2000 }, 3000, fresh), 4);
+  // The next poll answers after the pane.
+  assert.equal(latestCount({ count: 4, at: 3000 }, { count: 5, at: 2000 }, 3500, fresh), 4);
+  // No pane (narrow window): the API alone.
+  assert.equal(latestCount({ count: 7, at: 1000 }, { count: null, at: 0 }, 2000, fresh), 7);
+  // A stale API answer gives way to the pane, or to nothing.
+  assert.equal(latestCount({ count: 7, at: 0 }, { count: 2, at: 0 }, 100_000, fresh), 2);
+  assert.equal(latestCount({ count: 7, at: 0 }, { count: null, at: 0 }, 100_000, fresh), null);
+  assert.equal(latestCount({ count: null, at: 0 }, { count: null, at: 0 }, 0, fresh), null);
+});

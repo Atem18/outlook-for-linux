@@ -40,6 +40,7 @@ function safely(name, fn) {
 // Page-world hooks: before any page script.
 safely("notifications", () => notifications.init(config, ipcRenderer, contextBridge));
 safely("webauthn", () => webauthn.init(config, ipcRenderer, contextBridge));
+safely("appBadge", () => unreadBadge.blockPageBadge(contextBridge));
 
 // DOM tools: once the document exists.
 function initDomTools() {

@@ -69,4 +69,42 @@ function parseUnreadCount(json) {
   return Number.isInteger(count) && count >= 0 ? count : null;
 }
 
-module.exports = { apiOriginOf, bearerFrom, getFolderUrl, getFolderBody, parseUnreadCount };
+/**
+ * Whether a service.svc call is a GetFolder (ours, or Outlook's own folder
+ * refresh), which never changes the count and must not trigger another poll.
+ * @param {string} url
+ * @returns {boolean}
+ */
+function isGetFolder(url) {
+  try {
+    return new URL(url).searchParams.get("action")?.toLowerCase() === "getfolder";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The count to show: the most recent of the API's answer (while fresh) and
+ * the folder pane's. The pane changes the moment a message is read; the API
+ * catches up on the next poll and covers windows too narrow for the pane.
+ * @param {{count: number|null, at: number}} api
+ * @param {{count: number|null, at: number}} dom
+ * @param {number} now
+ * @param {number} freshMs - how long an API answer stays usable
+ * @returns {number|null}
+ */
+function latestCount(api, dom, now, freshMs) {
+  const apiFresh = api.count !== null && now - api.at < freshMs;
+  if (apiFresh && (dom.count === null || api.at >= dom.at)) return api.count;
+  return dom.count ?? (apiFresh ? api.count : null);
+}
+
+module.exports = {
+  apiOriginOf,
+  bearerFrom,
+  getFolderUrl,
+  getFolderBody,
+  parseUnreadCount,
+  isGetFolder,
+  latestCount,
+};
