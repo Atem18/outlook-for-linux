@@ -20,6 +20,9 @@
     </p>
   </description>
   <launchable type="desktop-id">io.github.Atem18.OutlookForLinux.desktop</launchable>
+  <provides>
+    <mediatype>message/rfc822</mediatype>
+  </provides>
   <categories>
     <category>Office</category>
     <category>Email</category>
