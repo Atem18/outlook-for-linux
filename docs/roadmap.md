@@ -160,6 +160,15 @@ Chat, stickers) are not. When porting, read the teams-for-linux module first
 - Microsoft Graph through the page's session: a reminder backstop
 - Open `.eml` and `.ics` files; "send to mail recipient" with attachments via a
   draft created through Outlook's API
+- GitHub releases (done): CI builds deb, rpm, tar.gz and AppImage for x64
+  and arm64 and uploads them to a draft release for the package.json
+  version, as teams-for-linux does (one job for both architectures, so two
+  jobs cannot each create a draft). AppImages use electron-builder's
+  `toolsets.appimage: "1.0.3"` (AppImage's static type2 runtime): the
+  default FUSE2 runtime needs libfuse2, which stock Ubuntu 24.04+ lacks, and
+  its arm64 build links `libz.so` from zlib's development package. CI checks
+  the runtimes link nothing and launches the x64 AppImage and the unpacked
+  app. Snap and Flatpak stay with their stores
 - Auto-update for deb (electron-updater)
 - Flathub submission with vendored npm sources (flatpak-node-generator); Snap
   Store

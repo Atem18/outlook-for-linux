@@ -10,6 +10,13 @@ Not affiliated with or endorsed by Microsoft.
 
 Early development (Phase 2). See [docs/roadmap.md](docs/roadmap.md).
 
+## Download
+
+[GitHub releases](https://github.com/Atem18/outlook-for-linux/releases) carry
+packages for x64 and arm64: `.deb` (Ubuntu, Debian), `.rpm` (Fedora,
+openSUSE), `.AppImage` (any distribution: make it executable and run it) and
+`.tar.gz` (unpack and run `outlook-for-linux`).
+
 ## Running from source
 
 Requires Node.js 22 or later.
@@ -125,6 +132,7 @@ for the next launch.
 ## Building packages
 
 ```bash
+npm run dist:linux:release # .deb, .rpm, .tar.gz, .AppImage (x64 + arm64; .rpm needs rpmbuild)
 npm run dist:linux:deb     # .deb (x64 + arm64)
 npm run dist:linux:snap    # .snap (needs snapcraft)
 npm run dist:flatpak       # local Flatpak install (needs flatpak + org.flatpak.Builder)
@@ -134,6 +142,16 @@ Packages land in `dist/`. The `.deb` names end in `_amd64.deb` (Intel/AMD)
 or `_arm64.deb` (ARM); build for the machine's architecture with
 `npx electron-builder --x64 -l deb --publish never` (or `--arm64`) to skip
 the other one.
+
+### Releases
+
+CI builds the release packages on every push to `main` and uploads them to
+a draft GitHub release named after `package.json`'s version (`v<version>`);
+pull requests get them as workflow artifacts. To release: bump the version
+(package.json, lock file, AppStream release, README install line), merge,
+check the draft's files, write its notes and publish it, which creates the
+tag. A published release is never changed, so later pushes start a new
+draft only after the next version bump.
 
 ## Installing on Ubuntu or Debian
 
