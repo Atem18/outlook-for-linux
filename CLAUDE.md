@@ -40,6 +40,8 @@ npm 12 blocks dependency install scripts unless approved
   switcher (`app/accountSwitcher/`). Anything that applies to "the Outlook
   page" must go through `setupOutlookPage` in `app/mainAppWindow` and act on
   `activeContents()`, not `window.webContents`
+- `app/emlViewer/`: the `.eml` viewer window; `message.js` is pure and tested.
+  Message HTML only ever renders in its sandboxed srcdoc iframe
 - `app/browser/preload.js` + `tools/`: injected into Outlook. The preload runs
   sandboxed, so it is bundled by `scripts/buildPreload.js` into
   `preload.bundle.js` (git-ignored; built by `prestart`, `pretest:e2e`, packaging).

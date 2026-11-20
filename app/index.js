@@ -53,15 +53,16 @@ const mainAppWindow = require("./mainAppWindow");
 
 if (app.requestSingleInstanceLock()) {
   // A second launch with a mailto: link (another app's "send email") opens a
-  // compose window; any other launch (desktop icon, taskbar) focuses the
-  // running window.
-  app.on("second-instance", (_event, args) => {
-    if (!mainAppWindow.handleLaunchArgs(args)) mainAppWindow.show();
+  // compose window, one with .eml files opens them in the message viewer;
+  // any other launch (desktop icon, taskbar) focuses the running window.
+  app.on("second-instance", (_event, args, workingDirectory) => {
+    if (!mainAppWindow.handleLaunchArgs(args, workingDirectory)) mainAppWindow.show();
   });
 
   app.on("window-all-closed", () => app.quit());
 
-  // A mailto: link on this launch's own command line waits for the window.
+  // A mailto: link or .eml file on this launch's own command line waits for
+  // the window.
   mainAppWindow.handleLaunchArgs(process.argv);
   app.whenReady().then(async () => {
     // Intune first: the first sign-in request already needs the broker's

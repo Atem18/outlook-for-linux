@@ -158,8 +158,31 @@ Chat, stickers) are not. When porting, read the teams-for-linux module first
 ## Phase 3: extras
 
 - Microsoft Graph through the page's session: a reminder backstop
-- Open `.eml` and `.ics` files; "send to mail recipient" with attachments via a
-  draft created through Outlook's API
+- Open `.eml` files (done, `app/emlViewer`): a read-only viewer window, as
+  Outlook for Windows opens saved messages, since Outlook on the web cannot
+  open a local file. Parsed in the main process with postal-mime; headers,
+  body and attachments (saved through a dialog). The body is a srcdoc
+  iframe sandboxed without scripts, forms or same-origin, under a CSP that
+  blocks remote content until the user asks; the window has its own
+  in-memory session, so remote loads never carry Outlook's cookies. Links go
+  to the browser (mailto: to a compose window); the frame never navigates.
+  Reply opens the compose deeplink (to, "Re:" subject, quoted text; not
+  threaded with the original). Opened from the command line (paths or
+  file:// URIs, relative to a second launch's own working directory), the
+  file manager (`message/rfc822` in every package) and File → Open
+  Message…. `defaultMailClient` also claims `message/rfc822` with
+  xdg-mime (outside Flatpak/Snap, and only when the desktop entry is
+  installed): GNOME's Default Apps → Mail sets `mailto:` only. The deb declares the type with `linux.mimeTypes`, not
+  `fileAssociations`, which would also install a MIME definition overriding
+  the system's `message/rfc822` icon. Checked with Playwright (65 messages
+  from the mailparser, postal-mime and CPython test suites: all parse, none
+  loads from the network; attachment saving byte-identical) and, on GNOME,
+  `gio open` through the unpacked arm64 deb (cold start and second-instance
+  handover). Still to verify by hand: the installed deb from Nautilus, the
+  Flatpak (document portal paths), the real save dialog, and exports from
+  Outlook, Thunderbird and Gmail
+- Open `.ics` files; "send to mail recipient" with attachments via a draft
+  created through Outlook's API
 - GitHub releases (done): CI builds deb, rpm, tar.gz and AppImage for x64
   and arm64 and uploads them to a draft release for the package.json
   version, as teams-for-linux does (one job for both architectures, so two

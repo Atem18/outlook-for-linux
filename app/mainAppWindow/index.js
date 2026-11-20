@@ -1,9 +1,12 @@
 const { app, BrowserWindow, Menu, ipcMain, nativeTheme, shell, session } = require("electron");
 const path = require("node:path");
+const fs = require("node:fs");
+const { execFile } = require("node:child_process");
 const windowStateKeeper = require("electron-window-state");
 const { classifyWindowOpen, classifyNavigation } = require("./linkPolicy");
 const { mailboxOrigin, startUrl, isSignedOutPage } = require("./startUrl");
 const { PROTOCOL_SCHEMES, parseMailto, findMailtoArg, composeUrl } = require("./mailtoLink");
+const { claimFileTypes } = require("./fileTypeDefault");
 const configOptions = require("../config/options");
 const AppTray = require("../tray");
 const { UnreadService, UnreadTotal } = require("../unread");
@@ -15,6 +18,8 @@ const CustomCSS = require("../customCSS");
 const AppIcon = require("../appIcon");
 const { AccountStore } = require("../accounts/store");
 const AccountViews = require("../accounts/views");
+const EmlViewer = require("../emlViewer");
+const { findEmlArgs } = require("../emlViewer/message");
 const {
   isIntegratedTitleBar,
   titleBarWindowOptions,
@@ -41,6 +46,9 @@ let notifications = null;
 let downloads = null;
 // A mailto: link that arrived before the main window existed.
 let pendingMailto = null;
+// .eml files that arrived before the app was ready, and their viewer.
+const pendingEmlFiles = [];
+let emlViewer = null;
 // webContents of open mailto: compose windows. They load the preload for
 // their title bar only.
 const composeContents = new Set();
@@ -507,7 +515,19 @@ function notificationAccount(contents) {
 
 function buildMenu() {
   const template = [
-    { role: "fileMenu" },
+    {
+      label: "File",
+      submenu: [
+        {
+          label: "Open Message…",
+          accelerator: "CmdOrCtrl+O",
+          click: (_item, win) =>
+            emlViewer?.openDialog(win).catch((err) => console.error("[EML] Open dialog failed", { error: err.message })),
+        },
+        { type: "separator" },
+        { label: "Quit", accelerator: "CmdOrCtrl+Q", click: quit },
+      ],
+    },
     { role: "editMenu" },
     {
       label: "View",
@@ -585,10 +605,11 @@ app.on("before-quit", () => {
   quitting = true;
 });
 
-// Opt-in (defaultMailClient): claiming mailto: silently would take it from
-// the user's current mail client. Inside Flatpak and Snap, xdg-settings cannot
-// change the host's handlers, so the desktop's own settings are the way there;
-// the desktop entry already lists the app as a mailto: handler.
+// Opt-in (defaultMailClient): claiming mailto: and .eml files silently would
+// take them from the user's current mail client. Inside Flatpak and Snap,
+// xdg-settings and xdg-mime cannot change the host's handlers, so the
+// desktop's own settings are the way there; the desktop entry already lists
+// the app for mailto: and message/rfc822.
 function registerMailClient(config) {
   if (!config.defaultMailClient) return;
   if (process.env.FLATPAK_ID || process.env.SNAP_INSTANCE_NAME) {
@@ -600,6 +621,23 @@ function registerMailClient(config) {
     const ok = app.setAsDefaultProtocolClient(scheme);
     console.info("[MAILTO] Registering as default handler", { scheme, ok });
   }
+  // GNOME's and KDE's "default mail client" covers mailto: links only;
+  // opening a saved message is a separate file-type default.
+  claimFileTypes({
+    // app.setDesktopName (app/index.js) sets CHROME_DESKTOP, the id
+    // setAsDefaultProtocolClient uses too.
+    desktopId: process.env.CHROME_DESKTOP || "outlook-for-linux.desktop",
+    run: (command, args) =>
+      new Promise((resolve, reject) =>
+        execFile(command, args, { timeout: 10_000 }, (err, stdout) => (err ? reject(err) : resolve(stdout))),
+      ),
+    exists: (file) => fs.existsSync(file),
+    env: process.env,
+  }).then((results) => {
+    for (const { mimeType, result } of results) {
+      console.info("[MAILTO] Default for file type", { mimeType, result });
+    }
+  }).catch((err) => console.error("[MAILTO] Could not claim file types", { error: err.message }));
 }
 
 // The mailbox the compose window should open on: the one on screen, else the
@@ -621,9 +659,7 @@ function activePartition() {
 // new window" does, so the mailbox in the main window keeps its state. With
 // the integrated title bar it gets a title bar strip in the main window's
 // header colour, as Outlook for Windows gives its pop-outs.
-async function openCompose(mailto) {
-  const fields = parseMailto(mailto);
-  if (!fields) return;
+async function openCompose(fields) {
   if (isIntegratedTitleBar(appConfig)) await refreshMainHeaderColor();
   console.info("[MAILTO] Opening compose", {
     recipients: fields.to.length + fields.cc.length + fields.bcc.length,
@@ -649,24 +685,39 @@ async function openCompose(mailto) {
 }
 
 // An unhandled rejection ends the app (see app/index.js).
+function openComposeFields(fields) {
+  openCompose(fields).catch((err) => console.error("[MAILTO] Could not open compose", { error: err.message }));
+}
+
 function openComposeSafely(mailto) {
-  openCompose(mailto).catch((err) => console.error("[MAILTO] Could not open compose", { error: err.message }));
+  const fields = parseMailto(mailto);
+  if (fields) openComposeFields(fields);
+}
+
+function openEmlFile(file) {
+  emlViewer.open(file).catch((err) => console.error("[EML] Could not open message", { error: err.message }));
 }
 
 /**
  * Handles the command line of this launch or of a second one: a mailto: link
- * opens a compose window, anything else brings the main window back.
+ * opens a compose window, .eml files open in the message viewer, anything
+ * else brings the main window back.
  * @param {string[]} args
- * @returns {boolean} true when a mailto: link was handled
+ * @param {string} [workingDirectory] - where relative paths in args start
+ *   (a second launch's own working directory)
+ * @returns {boolean} true when a mailto: link or a message was handled
  */
-function handleLaunchArgs(args) {
+function handleLaunchArgs(args, workingDirectory = process.cwd()) {
   const mailto = findMailtoArg(args);
-  if (!mailto) return false;
+  const emlFiles = findEmlArgs(args, workingDirectory);
+  if (!mailto && !emlFiles.length) return false;
   if (!window) {
-    pendingMailto = mailto;
-  } else {
-    openComposeSafely(mailto);
+    if (mailto) pendingMailto = mailto;
+    pendingEmlFiles.push(...emlFiles);
+    return true;
   }
+  if (mailto) openComposeSafely(mailto);
+  for (const file of emlFiles) openEmlFile(file);
   return true;
 }
 
@@ -674,6 +725,12 @@ function onAppReady(config, settingsStore) {
   appConfig = config;
   store = settingsStore;
   appIcon = new AppIcon(config, settingsStore, ICON_PATH);
+  emlViewer = new EmlViewer({
+    openCompose: openComposeFields,
+    openMailto: openComposeSafely,
+    openExternal,
+    icon: () => appIcon.windowImage(),
+  });
   buildMenu();
   registerMailClient(config);
   createWindow(config, settingsStore);
@@ -681,6 +738,7 @@ function onAppReady(config, settingsStore) {
     openComposeSafely(pendingMailto);
     pendingMailto = null;
   }
+  for (const file of pendingEmlFiles.splice(0)) openEmlFile(file);
   return window;
 }
 
