@@ -1,6 +1,6 @@
 {
   "name": "outlook-for-linux",
-  "version": "2.2.1",
+  "version": "2.3.0",
   "main": "app/index.js",
   "desktopName": "outlook-for-linux.desktop",
   "description": "Unofficial client for Microsoft Outlook for Linux",
@@ -15,6 +15,11 @@
     "email": "messer.kevin@gmail.com"
   },
   "license": "GPL-3.0-or-later",
+  "homepage": "https://github.com/Atem18/outlook-for-linux",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Atem18/outlook-for-linux.git"
+  },
   "engines": {
     "node": ">=22"
   },
@@ -29,6 +34,7 @@
     "pack": "npm run build:preload && electron-builder --dir --publish never",
     "dist:linux": "npm run build:preload && electron-builder --linux --publish never",
     "dist:linux:deb": "npm run build:preload && electron-builder --x64 --arm64 -l deb --publish never",
+    "dist:linux:release": "npm run build:preload && electron-builder --x64 --arm64 -l deb rpm tar.gz AppImage",
     "dist:linux:snap": "npm run build:preload && electron-builder -l snap --publish never",
     "dist:linux:dir": "npm run build:preload && electron-builder --linux dir --publish never",
     "dist:flatpak": "npm run dist:linux:dir && flatpak run org.flatpak.Builder --user --install --force-clean flatpak-build flatpak/io.github.Atem18.OutlookForLinux.yml",
@@ -55,6 +61,9 @@
   },
   "build": {
     "npmRebuild": false,
+    "toolsets": {
+      "appimage": "1.0.3"
+    },
     "appId": "outlook-for-linux",
     "productName": "Outlook for Linux",
     "files": [
@@ -90,7 +99,11 @@
       "target": [
         "deb",
         "snap"
-      ]
+      ],
+      "publish": {
+        "provider": "github",
+        "releaseType": "draft"
+      }
     },
     "deb": {
       "depends": [
@@ -110,6 +123,29 @@
         "libappindicator3-1",
         "fido2-tools"
       ]
+    },
+    "rpm": {
+      "depends": [
+        "gtk3",
+        "libnotify",
+        "nss",
+        "libXScrnSaver",
+        "(libXtst or libXtst6)",
+        "xdg-utils",
+        "at-spi2-core",
+        "(libuuid or libuuid1)",
+        "libsecret",
+        "(mesa-libgbm or libgbm1)",
+        "(alsa-lib or libasound2)"
+      ],
+      "fpm": [
+        "--rpm-rpmbuild-define=_build_id_links  none",
+        "--rpm-digest=sha256",
+        "--rpm-tag=Recommends: fido2-tools"
+      ]
+    },
+    "appImage": {
+      "artifactName": "${name}-${version}-${arch}.${ext}"
     },
     "snap": {
       "summary": "Outlook for Linux",

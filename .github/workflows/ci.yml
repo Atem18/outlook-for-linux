@@ -4,13 +4,16 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
-permissions:
-  contents: read
+# Each job declares only what it needs.
+permissions: {}
 
 jobs:
   test:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -23,9 +26,26 @@ jobs:
       - name: E2E launch test
         run: xvfb-run --auto-servernum npm run test:e2e
 
-  build:
+  # Packages for x64 and arm64: deb, rpm, tar.gz and AppImage, as
+  # teams-for-linux ships. On main they go to a draft GitHub release named
+  # after package.json's version (build.linux.publish): every push refreshes
+  # the draft's files, and publishing the draft by hand creates the tag. A
+  # release that is already published is left alone, so bump the version
+  # for the next one. On pull requests they are workflow artifacts.
+  #
+  # One job builds both architectures: two jobs publishing at once can each
+  # create a draft for the same version.
+  packages:
     needs: test
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    # Two pushes in a row must not upload to the same draft at once.
+    concurrency:
+      group: packages-${{ github.ref }}
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -33,8 +53,71 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run dist:linux:deb
-      - uses: actions/upload-artifact@v4
+      - name: Install rpmbuild
+        run: command -v rpmbuild || { sudo apt-get update && sudo apt-get install -y rpm; }
+
+      - name: Build and publish to the draft release
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        run: npm run dist:linux:release -- --publish always
+
+      - name: Build
+        if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'
+        run: npm run dist:linux:release -- --publish never
+
+      # The e2e test runs app/index.js from the checkout, so this is the only
+      # check that build.files ships everything the app loads. The app must
+      # still be running after 45 s (timeout exits 124) without a
+      # missing-module error.
+      - name: Smoke-launch the packaged app
+        run: |
+          export E2E_USER_DATA_DIR="$(mktemp -d)"
+          set +e
+          timeout 45 xvfb-run --auto-servernum dist/linux-unpacked/outlook-for-linux --no-sandbox > smoke.log 2>&1
+          status=$?
+          set -e
+          cat smoke.log
+          if grep -qE "Cannot find module|MODULE_NOT_FOUND|A JavaScript error occurred in the main process|\[FATAL\]" smoke.log; then
+            echo "::error::packaged app failed to start"
+            exit 1
+          fi
+          if [ "$status" -ne 124 ]; then
+            echo "::error::packaged app exited after less than 45s (status $status)"
+            exit 1
+          fi
+
+      # build.toolsets.appimage picks AppImage's static type2 runtime. The
+      # default (FUSE2) runtime needs libfuse2, absent from stock Ubuntu
+      # 24.04 and later, and its arm64 build links libz.so, which only zlib's
+      # development package provides.
+      - name: Check the AppImages
+        run: |
+          for image in dist/*.AppImage; do
+            if readelf -d "$image" | grep -q NEEDED; then
+              echo "::error::$image's runtime links shared libraries:"
+              readelf -d "$image" | grep NEEDED
+              exit 1
+            fi
+          done
+          export E2E_USER_DATA_DIR="$(mktemp -d)"
+          # Runners have no FUSE: the runtime extracts itself instead.
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          set +e
+          timeout 45 xvfb-run --auto-servernum "$(ls dist/*.AppImage | grep -v arm64)" --no-sandbox > appimage.log 2>&1
+          status=$?
+          set -e
+          cat appimage.log
+          if [ "$status" -ne 124 ]; then
+            echo "::error::x64 AppImage exited after less than 45s (status $status)"
+            exit 1
+          fi
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
         with:
-          name: deb
-          path: dist/*.deb
+          name: outlook-for-linux-packages
+          path: |
+            dist/*.deb
+            dist/*.rpm
+            dist/*.tar.gz
+            dist/*.AppImage
+          retention-days: 30

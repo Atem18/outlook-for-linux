@@ -24,6 +24,8 @@ npm 12 blocks dependency install scripts unless approved
 - `npm run lint`: ESLint, run before every commit
 - `npm run test:unit`: `node --test 'tests/unit/*.test.js'`, run before every commit
 - `npm run test:e2e`: Playwright launch test (needs a display or `xvfb-run`)
+- `npm run dist:linux:release`: deb, rpm, tar.gz, AppImage (x64 + arm64), what
+  CI uploads to the draft GitHub release on pushes to main
 - `npm run dist:linux:deb` / `dist:linux:snap` / `dist:flatpak`: packages
 
 ## Layout
