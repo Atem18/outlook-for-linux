@@ -40,7 +40,7 @@ Options come from, in increasing precedence:
 | `closeToTray` | `true` | Closing the window hides it to the tray, so notifications and reminders keep arriving. |
 | `notifications` | `true` | Show Outlook's notifications as native desktop notifications. |
 | `multiAccount` | `false` | Several accounts side by side in one window. See [Accounts](#accounts). |
-| `defaultMailClient` | `false` | Make the app the default mail client at startup (`mailto:` links open a compose window). |
+| `defaultMailClient` | `false` | Make the app the default mail client at startup (`mailto:` links open a compose window, `.eml` files the message viewer). |
 | `customCSSLocation` | `""` | CSS file injected into Outlook's pages. |
 | `globalShortcuts` | `[]` | Shortcuts forwarded to Outlook while the app is not focused, e.g. `["Control+Shift+M"]`. On Wayland, start with `--enable-features=GlobalShortcutsPortal`. |
 | `intune` | `false` | Single sign-on through the Microsoft Identity Broker on Intune-enrolled machines. |
@@ -93,7 +93,24 @@ desktop's default-applications settings. Choosing it there makes "send email"
 links from other apps open an Outlook compose window. Outside Flatpak and
 Snap, `--defaultMailClient` (or `"defaultMailClient": true`) sets it at
 startup instead, like `xdg-settings set default-url-scheme-handler mailto
-outlook-for-linux.desktop`.
+outlook-for-linux.desktop`. It also makes the app the default for `.eml`
+files (`xdg-mime default outlook-for-linux.desktop message/rfc822`): the
+desktop's "Mail" setting covers `mailto:` links only, not saved messages.
+
+### Opening .eml files
+
+Saved messages (`.eml`) open in a read-only viewer window: double-click one
+in the file manager (every package registers `message/rfc822`), pass it on
+the command line (`outlook-for-linux message.eml`), or use File → Open
+Message… (Ctrl+O). The viewer shows the headers, the body and the
+attachments (click one to save it). The message runs no scripts, and remote
+images stay blocked until you click Show. Reply opens an Outlook compose
+window addressed to the sender with the original quoted. To make the app the
+default for `.eml` files:
+
+```bash
+xdg-mime default outlook-for-linux.desktop message/rfc822
+```
 
 ### App icon
 

@@ -72,7 +72,7 @@ module.exports = {
   defaultMailClient: {
     default: false,
     describe:
-      "Make the app the default mail client at startup, so mailto: links open an Outlook compose window. Off by default to leave an existing mail client alone; inside Flatpak or Snap, choose the default in the desktop settings instead.",
+      "Make the app the default mail client at startup, so mailto: links open an Outlook compose window and .eml files open in the message viewer. Off by default to leave an existing mail client alone; inside Flatpak or Snap, choose the default in the desktop settings instead.",
     type: "boolean",
   },
   clientCertPath: {

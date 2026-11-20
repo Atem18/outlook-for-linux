@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- The message's iframe (srcdoc) inherits this policy on top of its own,
+       which blocks remote content until the user asks for it. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src data: https: http:; font-src data: https: http:; media-src data: https: http:">
+  <title>Message</title>
+  <link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+  <header class="header">
+    <div class="title-row">
+      <h1 id="subject" class="subject"></h1>
+      <button id="reply" class="button" type="button" title="Reply in Outlook">Reply</button>
+    </div>
+    <div class="meta">
+      <div class="from-row">
+        <span id="from" class="from"></span>
+        <time id="date" class="date"></time>
+      </div>
+      <div id="to-row" class="row" hidden><span class="label">To</span><span id="to"></span></div>
+      <div id="cc-row" class="row" hidden><span class="label">Cc</span><span id="cc"></span></div>
+    </div>
+    <ul id="attachments" class="attachments" hidden></ul>
+  </header>
+  <div id="remote-banner" class="banner" hidden>
+    <span>Remote images and content in this message were blocked to protect your privacy.</span>
+    <button id="load-remote" class="button" type="button">Show</button>
+  </div>
+  <!-- No allow-scripts, no allow-same-origin, no allow-forms: the message
+       runs nothing and reaches nothing. Popups are allowed so links go
+       through the main process's window.open handler to the browser. -->
+  <iframe id="body" class="body" sandbox="allow-popups allow-popups-to-escape-sandbox" title="Message body"></iframe>
+  <script src="viewer.js"></script>
+</body>
+</html>
