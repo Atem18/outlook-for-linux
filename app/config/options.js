@@ -75,6 +75,13 @@ module.exports = {
       "Make the app the default mail client at startup, so mailto: links open an Outlook compose window and .eml files open in the message viewer. Off by default to leave an existing mail client alone; inside Flatpak or Snap, choose the default in the desktop settings instead.",
     type: "boolean",
   },
+  teamsLinks: {
+    default: "auto",
+    describe:
+      "Where Teams meeting links (the calendar's Join button, links in invites) open. \"teams\" hands them to the Teams desktop app (e.g. teams-for-linux) as msteams:// links; \"browser\" opens them in the browser; \"auto\" uses the Teams app when one is registered for msteams:// links, else the browser. Inside Flatpak or Snap the app cannot see the host's handlers, so auto means the browser there: set \"teams\".",
+    type: "string",
+    choices: ["auto", "teams", "browser"],
+  },
   clientCertPath: {
     default: "",
     describe:

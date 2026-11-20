@@ -181,6 +181,14 @@ Chat, stickers) are not. When porting, read the teams-for-linux module first
   handover). Still to verify by hand: the installed deb from Nautilus, the
   Flatpak (document portal paths), the real save dialog, and exports from
   Outlook, Thunderbird and Gmail
+- Teams meetings (done, `teamsLinks`): Join buttons and Teams links in
+  invites open in a Teams desktop app (teams-for-linux) as `msteams://`
+  links, the form Teams' launcher page hands over and teams-for-linux's
+  `msTeamsProtocols.v2` accepts. `auto` asks xdg-mime for an
+  `x-scheme-handler/msteams` handler on each click and falls back to the
+  browser; inside Flatpak/Snap it cannot see the host's handlers, so it is
+  the browser there unless set to `teams`. Safe Links-wrapped links still
+  go to the browser (unwrapping them would skip Defender's check)
 - Open `.ics` files; "send to mail recipient" with attachments via a draft
   created through Outlook's API
 - GitHub releases (done): CI builds deb, rpm, tar.gz and AppImage for x64
