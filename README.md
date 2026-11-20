@@ -48,6 +48,7 @@ Options come from, in increasing precedence:
 | `notifications` | `true` | Show Outlook's notifications as native desktop notifications. |
 | `multiAccount` | `false` | Several accounts side by side in one window. See [Accounts](#accounts). |
 | `defaultMailClient` | `false` | Make the app the default mail client at startup (`mailto:` links open a compose window, `.eml` files the message viewer). |
+| `teamsLinks` | `auto` | Where Teams meeting links (the calendar's Join button) open: `teams` hands them to a Teams desktop app such as teams-for-linux, `browser` to the browser, `auto` to the Teams app when one is registered for `msteams://` links (outside Flatpak/Snap), else the browser. |
 | `customCSSLocation` | `""` | CSS file injected into Outlook's pages. |
 | `globalShortcuts` | `[]` | Shortcuts forwarded to Outlook while the app is not focused, e.g. `["Control+Shift+M"]`. On Wayland, start with `--enable-features=GlobalShortcutsPortal`. |
 | `intune` | `false` | Single sign-on through the Microsoft Identity Broker on Intune-enrolled machines. |
@@ -190,7 +191,7 @@ Copy `dist/outlook-for-linux_<version>_amd64.deb` to the target machine and
 install it with apt, which also installs the libraries it needs:
 
 ```bash
-sudo apt install ./outlook-for-linux_2.3.0_amd64.deb
+sudo apt install ./outlook-for-linux_2.4.0_amd64.deb
 ```
 
 Outlook for Linux is then in the applications menu, or run

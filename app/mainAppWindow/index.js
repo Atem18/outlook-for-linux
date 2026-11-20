@@ -7,6 +7,7 @@ const { classifyWindowOpen, classifyNavigation } = require("./linkPolicy");
 const { mailboxOrigin, startUrl, isSignedOutPage } = require("./startUrl");
 const { PROTOCOL_SCHEMES, parseMailto, findMailtoArg, composeUrl } = require("./mailtoLink");
 const { claimFileTypes } = require("./fileTypeDefault");
+const { resolveExternalUrl } = require("./teamsLink");
 const configOptions = require("../config/options");
 const AppTray = require("../tray");
 const { UnreadService, UnreadTotal } = require("../unread");
@@ -72,6 +73,27 @@ function openExternal(url) {
     }
     console.error("[LINK] Could not open link externally", { scheme });
   });
+}
+
+function runCommand(command, args) {
+  return new Promise((resolve, reject) =>
+    execFile(command, args, { timeout: 10_000 }, (err, stdout) => (err ? reject(err) : resolve(stdout))),
+  );
+}
+
+function isSandboxed() {
+  return Boolean(process.env.FLATPAK_ID || process.env.SNAP_INSTANCE_NAME);
+}
+
+// A link leaving the app from Outlook's windows. Teams meeting links go to
+// the Teams desktop app when the teamsLinks option says so (./teamsLink.js).
+function openOutboundLink(url, config) {
+  resolveExternalUrl({ url, mode: config.teamsLinks, sandboxed: isSandboxed(), run: runCommand })
+    .then((target) => {
+      if (target !== url) console.info("[LINK] Opening Teams link in the Teams app");
+      openExternal(target);
+    })
+    .catch(() => openExternal(url));
 }
 
 // Pop-outs (compose, reading pane) get no preload and keep the sandbox. They
@@ -248,7 +270,7 @@ function applyLinkPolicy(webContents, config, partition = config.partition) {
         },
       };
     }
-    if (action === "external") openExternal(url);
+    if (action === "external") openOutboundLink(url, config);
     return { action: "deny" };
   });
 
@@ -263,7 +285,7 @@ function applyLinkPolicy(webContents, config, partition = config.partition) {
     const action = classifyNavigation(url);
     if (action === "allow") return;
     event.preventDefault();
-    if (action === "external") openExternal(url);
+    if (action === "external") openOutboundLink(url, config);
   });
 }
 
@@ -612,7 +634,7 @@ app.on("before-quit", () => {
 // the app for mailto: and message/rfc822.
 function registerMailClient(config) {
   if (!config.defaultMailClient) return;
-  if (process.env.FLATPAK_ID || process.env.SNAP_INSTANCE_NAME) {
+  if (isSandboxed()) {
     console.info("[MAILTO] Sandboxed install: choose the default mail client in the desktop settings");
     return;
   }
@@ -627,10 +649,7 @@ function registerMailClient(config) {
     // app.setDesktopName (app/index.js) sets CHROME_DESKTOP, the id
     // setAsDefaultProtocolClient uses too.
     desktopId: process.env.CHROME_DESKTOP || "outlook-for-linux.desktop",
-    run: (command, args) =>
-      new Promise((resolve, reject) =>
-        execFile(command, args, { timeout: 10_000 }, (err, stdout) => (err ? reject(err) : resolve(stdout))),
-      ),
+    run: runCommand,
     exists: (file) => fs.existsSync(file),
     env: process.env,
   }).then((results) => {
@@ -728,7 +747,7 @@ function onAppReady(config, settingsStore) {
   emlViewer = new EmlViewer({
     openCompose: openComposeFields,
     openMailto: openComposeSafely,
-    openExternal,
+    openExternal: (url) => openOutboundLink(url, config),
     icon: () => appIcon.windowImage(),
   });
   buildMenu();
